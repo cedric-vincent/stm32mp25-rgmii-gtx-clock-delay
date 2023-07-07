@@ -2,12 +2,12 @@ fn main () -> Result<(), std::io::Error> {
 	let dev_name = "eth1";
 	let dt_name  = find_dt_name(dev_name)?.unwrap();
 	let gpio     = find_gpio(&dt_name)?.unwrap();
-	let address  = find_address(&gpio)?.unwrap();
+	let (base, offset) = find_address(&gpio)?.unwrap();
 
 	// TODO: log::info instead of println
 	println!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
 	println!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
-	println!("  ↳ its delay can be accessed at address {address:#x} in /dev/mem");
+	println!("  ↳ its delay can be accessed at address {base:#x} (bits {}-{}) in /dev/mem", offset, offset + 4);
 
 	Ok(())
 }
@@ -24,7 +24,7 @@ impl std::fmt::Display for Gpio {
 	}
 }
 
-fn find_address (gpio: &Gpio) -> Result<Option<usize>, std::io::Error> {
+fn find_address (gpio: &Gpio) -> Result<Option<(usize, u8)>, std::io::Error> {
 	let path = format!("/sys/firmware/devicetree/base/__symbols__/gpio{}", gpio.bank.to_lowercase());
 	let path = std::fs::read_to_string(path)?;
 	let path = path.trim_end_matches('\0');
@@ -33,7 +33,7 @@ fn find_address (gpio: &Gpio) -> Result<Option<usize>, std::io::Error> {
 		None          => Ok(None),
 		Some(address) => {
 			match usize::from_str_radix(address, 16) {
-				Ok(address) => Ok(Some(address + 0x40)), // TODO: + gpio.line / 2
+				Ok(address) => Ok(Some((address + 0x40, gpio.line * 4))),
 				Err(_)      => Err(std::io::Error::from(std::io::ErrorKind::InvalidData)) // TODO: user friendly error
 			}
 		}
