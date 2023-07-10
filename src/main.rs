@@ -1,5 +1,6 @@
 mod error;
 use error::Error;
+use clap::{Args, Parser, Subcommand};
 
 fn main () {
 	let _ = stderrlog::new()
@@ -7,24 +8,34 @@ fn main () {
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
 
-	match main2() {
+	let options = Options::parse();
+
+	match main2(options) {
 		Ok(())     => { std::process::exit(0) }
 		Err(error) => { log::error!("{error}"); std::process::exit(1) }
 	}
 }
 
-fn main2 () -> Result<(), Error> {
-	let dev_name = "eth1";
+fn main2 (options: Options) -> Result<(), Error> {
+	match options.command {
+		Command::Benchmark { .. }     => { todo!() }
 
-	let dt_name = get_dt_name(dev_name)?;
-	let gpio    = get_gpio(&dt_name)?;
-	let address = get_address(&gpio)?;
-	let value   = get_value(&address)?;
+		Command::Set       { .. }     => { todo!() }
 
-	log::info!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
-	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
-	log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
-	log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
+		Command::Get       { device } => {
+			let dt_name = get_dt_name(&device)?;
+			log::info!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
+
+			let gpio = get_gpio(&dt_name)?;
+			log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
+
+			let address = get_address(&gpio)?;
+			log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
+
+			let value = get_value(&address)?;
+			log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
+		}
+	}
 
 	Ok(())
 }
@@ -133,9 +144,9 @@ fn get_value (address: &Address) -> Result<u32, error::GetValue> {
 	let page_offset = address.base & (page_size - 1);
 
 	let value = unsafe {
-	        *mmap(None, length, ProtFlags::PROT_READ, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)?
-	        .add(page_offset)
-	        .cast::<u32>()
+		*mmap(None, length, ProtFlags::PROT_READ, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)?
+		.add(page_offset)
+		.cast::<u32>()
 	};
 
 	Ok((value >> address.offset) & 0xF)
@@ -143,11 +154,97 @@ fn get_value (address: &Address) -> Result<u32, error::GetValue> {
 
 fn convert_to_ns(value: u32) -> Result<f32, Error> {
 	match value {
-	        0          => Ok(0.0),
-	        1          => Ok(0.3),
-	        x @ 2..=12 => Ok(0.25 * x as f32),
-	        13..=16    => Ok(3.25),
-	        _          => Err(Error::OutOfRangeDelay)
+		0          => Ok(0.0),
+		1          => Ok(0.3),
+		x @ 2..=12 => Ok(0.25 * x as f32),
+		13..=16    => Ok(3.25),
+		_          => Err(Error::OutOfRangeDelay)
+	}
+}
+
+#[derive(Parser)]
+struct Options {
+	/// Increase verbosity level (once = debug, twice = trace)
+	#[clap(short, long, action = clap::ArgAction::Count)]
+	verbose: u8,
+
+	/// Silence all output
+	#[clap(short, long)]
+	quiet: bool,
+
+	#[clap(subcommand)]
+	command: Command,
+}
+
+#[derive(Subcommand)]
+#[clap(author, version, about = "Calibrate STM32MP25 RGMII TX clock delay")]
+enum Command {
+	Benchmark {
+		/// Device name
+		#[clap(short = 'D', long)]
+		device: String,
+
+		#[command(flatten)]
+		urls: Urls,
+
+		/// First benchmarked value (in ns)
+		#[clap(short, long, default_value = "0", value_parser = clock_delay_parser)]
+		first_clock_delay: f32,
+
+		/// Last benchmarked value (in ns)
+		#[clap(short, long, default_value = "3.25", value_parser = clock_delay_parser)]
+		last_clock_delay: f32,
+
+		/// Skip if throughput is less than SIZE_THRESHOLD/TIME_THRESHOLD
+		#[clap(short, long, default_value = "5 MiB")]
+		size_threshold: String,
+
+		/// Skip if throughput is less than SIZE_THRESHOLD/TIME_THRESHOLD
+		#[clap(short, long, default_value = "5")]
+		time_threshold: usize,
+	},
+
+	Set {
+		/// Device name
+		#[clap(short = 'D', long)]
+		device: String,
+
+		/// TODO
+		clock_delays: u8,
+	},
+
+	Get {
+		/// Device name
+		#[clap(short = 'D', long)]
+		device: String,
+	}
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = true)]
+struct Urls {
+	/// Benchmark by downloading (and discarding) content from URL
+	#[clap(short, long)]
+	download_from: Option<String>,
+
+	/// Benchmark by uploading (random) content to URL
+	#[clap(short, long)]
+	upload_to: Option<String>,
+}
+
+fn clock_delay_parser (value: &str) -> Result<f32, String> {
+	match value.parse::<f32>() {
+		Err(_)    => Err(format!("not a floating point value")),
+		Ok(value) => {
+			let mut valid_values = vec![0 as f32, 0.3];
+			valid_values.append(&mut (2..=13).map(|x| x as f32 * 0.25).collect());
+
+			if valid_values.contains(&value) {
+				Ok(value)
+			} else {
+				Err(format!("must be one of {:?}", valid_values))
+			}
+		}
 	}
 }
 
