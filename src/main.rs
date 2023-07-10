@@ -15,9 +15,9 @@ fn main () {
 fn main2 () -> Result<(), error::Error> {
 	let dev_name = "eth1";
 
-	let dt_name = find_dt_name(dev_name)?;
-	let gpio    = find_gpio(&dt_name)?;
-	let address = find_address(&gpio)?;
+	let dt_name = get_dt_name(dev_name)?;
+	let gpio    = get_gpio(&dt_name)?;
+	let address = get_address(&gpio)?;
 
 	log::info!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
 	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
@@ -26,7 +26,7 @@ fn main2 () -> Result<(), error::Error> {
 	Ok(())
 }
 
-fn find_dt_name (dev_name: &str) -> Result<String, error::FindDtName> { //std::io::Error> {
+fn get_dt_name (dev_name: &str) -> Result<String, error::GetDtName> { //std::io::Error> {
 	use std::io::BufRead;
 
 	let path   = format!("/sys/class/net/{dev_name}/device/uevent");
@@ -47,7 +47,7 @@ fn find_dt_name (dev_name: &str) -> Result<String, error::FindDtName> { //std::i
 	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
 }
 
-fn find_gpio (dt_name: &str) -> Result<Gpio, error::FindGpio> {
+fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 	use std::io::BufRead;
 
 	let entries = std::fs::read_dir("/sys/kernel/debug/pinctrl/")?;
@@ -101,7 +101,7 @@ fn find_gpio (dt_name: &str) -> Result<Gpio, error::FindGpio> {
 	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
 }
 
-fn find_address (gpio: &Gpio) -> Result<Address, error::FindAddress> {
+fn get_address (gpio: &Gpio) -> Result<Address, error::GetAddress> {
 	let path = format!("/sys/firmware/devicetree/base/__symbols__/gpio{}", gpio.bank.to_lowercase());
 	let path = std::fs::read_to_string(path)?;
 	let path = path.trim_end_matches('\0');
