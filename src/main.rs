@@ -1,20 +1,32 @@
-//mod error;
-//use error::Error;
+mod error;
 
 fn main () {
-	let dev_name = "eth1";
+	let _ = stderrlog::new()
+	        .verbosity(2) // + options.verbose
+	        .color(stderrlog::ColorChoice::Never)
+	        .init();
 
-	let dt_name = find_dt_name(dev_name).unwrap(); // TODO: ?
-	let gpio    = find_gpio(&dt_name).unwrap();    // TODO: ?
-	let address = find_address(&gpio).unwrap();    // TODO: ?
-
-	// TODO: log::info instead of println
-	println!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
-	println!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
-	println!("  ↳ its delay can be accessed at address {address} in /dev/mem");
+	match main2() {
+		Ok(())     => { std::process::exit(0) }
+		Err(error) => { log::error!("{error}"); std::process::exit(1) }
+	}
 }
 
-fn find_dt_name (dev_name: &str) -> Result<String, std::io::Error> {
+fn main2 () -> Result<(), error::Error> {
+	let dev_name = "eth1";
+
+	let dt_name = find_dt_name(dev_name)?;
+	let gpio    = find_gpio(&dt_name)?;
+	let address = find_address(&gpio)?;
+
+	log::info!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
+	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
+	log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
+
+	Ok(())
+}
+
+fn find_dt_name (dev_name: &str) -> Result<String, error::FindDtName> { //std::io::Error> {
 	use std::io::BufRead;
 
 	let path   = format!("/sys/class/net/{dev_name}/device/uevent");
@@ -27,15 +39,15 @@ fn find_dt_name (dev_name: &str) -> Result<String, std::io::Error> {
 		if tokens.next() == Some("OF_NAME") {
 			return match tokens.next() {
 				Some(token) => Ok(String::from(token)),
-				None        => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+				None        => Err(std::io::Error::from(std::io::ErrorKind::NotFound))?,
 			}
 		}
 	}
 
-	Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
 }
 
-fn find_gpio (dt_name: &str) -> Result<Gpio, std::io::Error> {
+fn find_gpio (dt_name: &str) -> Result<Gpio, error::FindGpio> {
 	use std::io::BufRead;
 
 	let entries = std::fs::read_dir("/sys/kernel/debug/pinctrl/")?;
@@ -86,20 +98,20 @@ fn find_gpio (dt_name: &str) -> Result<Gpio, std::io::Error> {
 		}
 	}
 
-	Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
 }
 
-fn find_address (gpio: &Gpio) -> Result<Address, std::io::Error> {
+fn find_address (gpio: &Gpio) -> Result<Address, error::FindAddress> {
 	let path = format!("/sys/firmware/devicetree/base/__symbols__/gpio{}", gpio.bank.to_lowercase());
 	let path = std::fs::read_to_string(path)?;
 	let path = path.trim_end_matches('\0');
 
 	match path.split('@').last() {
-		None          => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+		None          => Err(std::io::Error::from(std::io::ErrorKind::NotFound))?,
 		Some(address) => {
 			match usize::from_str_radix(address, 16) {
 				Ok(address) => Ok(Address { base: address + 0x40, offset: gpio.line * 4 }),
-				Err(_)      => Err(std::io::Error::from(std::io::ErrorKind::InvalidData)),
+				Err(_)      => Err(std::io::Error::from(std::io::ErrorKind::InvalidData))?,
 			}
 		}
 	}
