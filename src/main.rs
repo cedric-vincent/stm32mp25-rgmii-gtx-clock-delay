@@ -1,4 +1,5 @@
 mod error;
+use error::Error;
 
 fn main () {
 	let _ = stderrlog::new()
@@ -12,7 +13,7 @@ fn main () {
 	}
 }
 
-fn main2 () -> Result<(), error::Error> {
+fn main2 () -> Result<(), Error> {
 	let dev_name = "eth1";
 
 	let dt_name = get_dt_name(dev_name)?;
@@ -23,7 +24,7 @@ fn main2 () -> Result<(), error::Error> {
 	log::info!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
 	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
 	log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
-	log::info!("    ↳ its value is {value:#x}");
+	log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
 
 	Ok(())
 }
@@ -138,6 +139,16 @@ fn get_value (address: &Address) -> Result<u32, error::GetValue> {
 	};
 
 	Ok((value >> address.offset) & 0xF)
+}
+
+fn convert_to_ns(value: u32) -> Result<f32, Error> {
+	match value {
+	        0          => Ok(0.0),
+	        1          => Ok(0.3),
+	        x @ 2..=12 => Ok(0.25 * x as f32),
+	        13..=16    => Ok(3.25),
+	        _          => Err(Error::OutOfRangeDelay)
+	}
 }
 
 #[derive(Debug)]

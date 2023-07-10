@@ -13,6 +13,9 @@ pub(crate) enum Error {
 
 	#[error("can't get the delay of the GPIO connected to the RGMII GTX clock: I/O error: {0}")]
 	GetValue(#[from] GetValue),
+
+	#[error("RGMII clock/data delay out of range")]
+	OutOfRangeDelay,
 }
 
 #[derive(Error, Debug)]
