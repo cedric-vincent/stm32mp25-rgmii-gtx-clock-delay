@@ -18,15 +18,17 @@ fn main2 () -> Result<(), error::Error> {
 	let dt_name = get_dt_name(dev_name)?;
 	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
+	let value   = get_value(&address)?;
 
 	log::info!("device named \"{dev_name}\" is known as \"{dt_name}\" in device-tree");
 	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
 	log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
+	log::info!("    ↳ its value is {value:#x}");
 
 	Ok(())
 }
 
-fn get_dt_name (dev_name: &str) -> Result<String, error::GetDtName> { //std::io::Error> {
+fn get_dt_name (dev_name: &str) -> Result<String, error::GetDtName> {
 	use std::io::BufRead;
 
 	let path   = format!("/sys/class/net/{dev_name}/device/uevent");
@@ -115,6 +117,27 @@ fn get_address (gpio: &Gpio) -> Result<Address, error::GetAddress> {
 			}
 		}
 	}
+}
+
+fn get_value (address: &Address) -> Result<u32, error::GetValue> {
+	use nix::unistd::{sysconf, SysconfVar};
+	use nix::sys::mman::{mmap, ProtFlags, MapFlags};
+	use std::os::unix::io::AsRawFd;
+
+	let handle = std::fs::File::open("/dev/mem")?;
+
+	let page_size   = sysconf(SysconfVar::PAGE_SIZE)?.unwrap_or(4096) as usize;
+	let length      = std::num::NonZeroUsize::new(page_size).unwrap();
+	let page_base   = (address.base & !(page_size - 1)) as libc::off_t;
+	let page_offset = address.base & (page_size - 1);
+
+	let value = unsafe {
+	        *mmap(None, length, ProtFlags::PROT_READ, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)?
+	        .add(page_offset)
+	        .cast::<u32>()
+	};
+
+	Ok((value >> address.offset) & 0xF)
 }
 
 #[derive(Debug)]
