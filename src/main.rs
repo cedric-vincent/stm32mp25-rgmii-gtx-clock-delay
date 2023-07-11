@@ -4,7 +4,6 @@ use clap::{Args, Parser, Subcommand};
 
 fn main () {
 	let _ = stderrlog::new()
-	        .verbosity(2) // + options.verbose
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
 
@@ -164,14 +163,6 @@ fn convert_to_ns(value: u32) -> Result<f32, Error> {
 
 #[derive(Parser)]
 struct Options {
-	/// Increase verbosity level (once = debug, twice = trace)
-	#[clap(short, long, action = clap::ArgAction::Count)]
-	verbose: u8,
-
-	/// Silence all output
-	#[clap(short, long)]
-	quiet: bool,
-
 	#[clap(subcommand)]
 	command: Command,
 }
