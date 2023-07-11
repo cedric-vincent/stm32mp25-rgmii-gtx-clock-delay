@@ -14,10 +14,12 @@ fn main () {
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
 
-	match main2(options) {
-		Ok(())     => { std::process::exit(0) }
-		Err(error) => { log::error!("{error}"); std::process::exit(1) }
-	}
+	let status = match main2(options) {
+		Ok(())     => { log::info!("Success!"); 0 }
+		Err(error) => { log::error!("{error}"); 1 }
+	};
+
+	std::process::exit(status);
 }
 
 fn main2 (options: Options) -> Result<(), Error> {
