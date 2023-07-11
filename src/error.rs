@@ -18,7 +18,7 @@ pub(crate) enum Error {
 	InvalidClockDelay,
 
 	#[error("TODO")]
-	Benchmark,
+	Benchmark(#[from] curl::Error),
 }
 
 #[derive(Error, Debug)]
