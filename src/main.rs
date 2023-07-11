@@ -3,11 +3,12 @@ use error::Error;
 use clap::{Args, Parser, Subcommand};
 
 fn main () {
+	let options = Options::parse();
+
 	let _ = stderrlog::new()
+	        .verbosity(options.verbose as usize + 2)
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
-
-	let options = Options::parse();
 
 	match main2(options) {
 		Ok(())     => { std::process::exit(0) }
@@ -135,29 +136,48 @@ fn get_address (gpio: &Gpio) -> Result<Address, error::GetAddress> {
 	}
 }
 
-fn get_value (address: &Address) -> Result<u32, error::GetValue> {
+fn get_value (address: &Address) -> Result<u32, Error> {
+	assert!(address.offset <= 28); // TODO
+
+	let value = unsafe { *mmap_value(address, true)? };
+	Ok((value >> address.offset) & 0xF)
+}
+
+fn set_value (address: &Address, clock_delay: f32) -> Result<u32, Error> {
+	assert!(address.offset <= 28); // TODO
+
+	let bits  = convert_to_bits(clock_delay)?;
+	let addr  = mmap_value(address, false)?;
+	let value = unsafe { *addr };
+	let value = (value & !(0xF << address.offset)) | (bits << address.offset);
+
+	unsafe { *addr = value }
+
+	get_value(address)
+}
+
+fn mmap_value (address: &Address, read_only: bool) -> Result<*mut u32, error::MmapValue> {
 	use nix::unistd::{sysconf, SysconfVar};
 	use nix::sys::mman::{mmap, ProtFlags, MapFlags};
 	use std::os::unix::io::AsRawFd;
 
-	let handle = std::fs::File::open("/dev/mem")?;
+	let (handle, prot_flags) = if read_only {
+		(std::fs::File::open("/dev/mem")?,
+		 ProtFlags::PROT_READ)
+	} else {
+		(std::fs::OpenOptions::new().read(true).write(true).open("/dev/mem")?,
+		 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE)
+	};
 
 	let page_size   = sysconf(SysconfVar::PAGE_SIZE)?.unwrap_or(4096) as usize;
 	let length      = std::num::NonZeroUsize::new(page_size).unwrap();
 	let page_base   = (address.base & !(page_size - 1)) as libc::off_t;
 	let page_offset = address.base & (page_size - 1);
 
-	let value = unsafe {
-		*mmap(None, length, ProtFlags::PROT_READ, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)?
-		.add(page_offset)
-		.cast::<u32>()
-	};
+	let address = unsafe { mmap(None, length, prot_flags, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)?.add(page_offset) };
 
-	Ok((value >> address.offset) & 0xF)
-}
-
-fn set_value (address: &Address, clock_delay: f32) -> Result<u32, error::GetValue> {
-	Ok(0) // TODO
+	log::debug!("mmaped address = {address:?}");
+	Ok(address as *mut u32)
 }
 
 fn convert_to_ns(value: u32) -> Result<f32, Error> {
@@ -207,6 +227,10 @@ fn test_convert_bits () {
 
 #[derive(Parser)]
 struct Options {
+	/// Increase verbosity level (once = debug, twice = trace)
+	#[clap(short, long, action = clap::ArgAction::Count)]
+	verbose: u8,
+
 	#[clap(subcommand)]
 	command: Command,
 }

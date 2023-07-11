@@ -11,8 +11,8 @@ pub(crate) enum Error {
 	#[error("can't get the address of the GPIO connected to the RGMII GTX clock: {0}")]
 	GetAddress(#[from] GetAddress),
 
-	#[error("can't get/set the delay of the GPIO connected to the RGMII GTX clock: {0}")]
-	GetValue(#[from] GetValue),
+	#[error("can't memory-map the address of the GPIO connected to the RGMII GTX clock: {0}")]
+	MmapValue(#[from] MmapValue),
 
 	#[error("invalid RGMII clock/data delay")]
 	InvalidClockDelay,
@@ -31,7 +31,7 @@ pub(crate) struct GetGpio(#[from] std::io::Error);
 pub(crate) struct GetAddress(#[from] std::io::Error);
 
 #[derive(Error, Debug)]
-pub(crate) enum GetValue {
+pub(crate) enum MmapValue {
 	#[error("I/O error: {0}")]
 	Io(#[from] std::io::Error),
 
