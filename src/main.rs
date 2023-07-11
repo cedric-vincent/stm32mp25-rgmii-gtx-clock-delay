@@ -17,24 +17,29 @@ fn main () {
 
 fn main2 (options: Options) -> Result<(), Error> {
 	match options.command {
-		Command::Benchmark { .. }     => { todo!() }
-
-		Command::Set       { .. }     => { todo!() }
-
-		Command::Get       { device } => {
-			let dt_name = get_dt_name(&device)?;
-			log::info!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
-
-			let gpio = get_gpio(&dt_name)?;
-			log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
-
-			let address = get_address(&gpio)?;
-			log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
-
-			let value = get_value(&address)?;
-			log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
-		}
+		Command::Benchmark { .. }            => { todo!() }
+		Command::Set { device, clock_delay } => proceed(&device, Some(clock_delay))?,
+		Command::Get { device }              => proceed(&device, None)?,
 	}
+
+	Ok(())
+}
+
+fn proceed (device: &str, clock_delay: Option<f32>) -> Result<(), Error> {
+	let dt_name = get_dt_name(&device)?;
+	log::info!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
+
+	let gpio = get_gpio(&dt_name)?;
+	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
+
+	let address = get_address(&gpio)?;
+	log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
+
+	let value = match clock_delay {
+		None              => get_value(&address)?,
+		Some(clock_delay) => set_value(&address, clock_delay)?,
+	};
+	log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
 
 	Ok(())
 }
@@ -151,14 +156,59 @@ fn get_value (address: &Address) -> Result<u32, error::GetValue> {
 	Ok((value >> address.offset) & 0xF)
 }
 
+fn set_value (address: &Address, clock_delay: f32) -> Result<u32, error::GetValue> {
+	Ok(0) // TODO
+}
+
 fn convert_to_ns(value: u32) -> Result<f32, Error> {
 	match value {
 		0          => Ok(0.0),
 		1          => Ok(0.3),
 		x @ 2..=12 => Ok(0.25 * x as f32),
 		13..=16    => Ok(3.25),
-		_          => Err(Error::OutOfRangeDelay)
+		_          => Err(Error::InvalidClockDelay)
 	}
+}
+
+fn convert_to_bits(ns: f32) -> Result<u32, Error> {
+	// floating point literals in patterns not allowed: https://github.com/rust-lang/rust/issues/41620b
+	let ns = (100.0 * ns) as u32;
+	match ns {
+		  0 =>  Ok(0),
+		 30 =>  Ok(1),
+		 50 =>  Ok(2),
+		 75 =>  Ok(3),
+		100 =>  Ok(4),
+		125 =>  Ok(5),
+		150 =>  Ok(6),
+		175 =>  Ok(7),
+		200 =>  Ok(8),
+		225 =>  Ok(9),
+		250 => Ok(10),
+		275 => Ok(11),
+		300 => Ok(12),
+		325 => Ok(13),
+		_   => Err(Error::InvalidClockDelay)
+	}
+}
+
+#[test]
+fn test_convert_bits () {
+	assert_eq!(convert_to_bits(0.0).unwrap(),   0);
+	assert_eq!(convert_to_bits(0.3).unwrap(),   1);
+	assert_eq!(convert_to_bits(0.5).unwrap(),   2);
+	assert_eq!(convert_to_bits(0.75).unwrap(),  3);
+	assert_eq!(convert_to_bits(1.0).unwrap(),   4);
+	assert_eq!(convert_to_bits(1.25).unwrap(),  5);
+	assert_eq!(convert_to_bits(1.5).unwrap(),   6);
+	assert_eq!(convert_to_bits(1.75).unwrap(),  7);
+	assert_eq!(convert_to_bits(2.0).unwrap(),   8);
+	assert_eq!(convert_to_bits(2.25).unwrap(),  9);
+	assert_eq!(convert_to_bits(2.5).unwrap(),  10);
+	assert_eq!(convert_to_bits(2.75).unwrap(), 11);
+	assert_eq!(convert_to_bits(3.0).unwrap(),  12);
+	assert_eq!(convert_to_bits(3.25).unwrap(), 13);
+	assert!(convert_to_bits(1.2).is_err());
 }
 
 #[derive(Parser)]
