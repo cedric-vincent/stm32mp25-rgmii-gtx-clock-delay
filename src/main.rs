@@ -171,24 +171,17 @@ fn convert_to_ns(value: u32) -> Result<f32, Error> {
 }
 
 fn convert_to_bits(ns: f32) -> Result<u32, Error> {
-	// floating point literals in patterns not allowed: https://github.com/rust-lang/rust/issues/41620b
-	let ns = (100.0 * ns) as u32;
-	match ns {
-		  0 =>  Ok(0),
-		 30 =>  Ok(1),
-		 50 =>  Ok(2),
-		 75 =>  Ok(3),
-		100 =>  Ok(4),
-		125 =>  Ok(5),
-		150 =>  Ok(6),
-		175 =>  Ok(7),
-		200 =>  Ok(8),
-		225 =>  Ok(9),
-		250 => Ok(10),
-		275 => Ok(11),
-		300 => Ok(12),
-		325 => Ok(13),
-		_   => Err(Error::InvalidClockDelay)
+	// floating point literals not allowed anymore in patterns:
+	// https://github.com/rust-lang/rust/issues/41620b
+	if ns == 0.3 {
+		Ok(1)
+	} else if ns >= 0.0
+	       && ns != 0.25
+	       && ns <= 3.25
+               && ns % 0.25 == 0.0 {
+		Ok((ns * 4.0) as u32)
+	} else {
+		Err(Error::InvalidClockDelay)
 	}
 }
 
@@ -209,6 +202,7 @@ fn test_convert_bits () {
 	assert_eq!(convert_to_bits(3.0).unwrap(),  12);
 	assert_eq!(convert_to_bits(3.25).unwrap(), 13);
 	assert!(convert_to_bits(1.2).is_err());
+	assert!(convert_to_bits(0.25).is_err());
 }
 
 #[derive(Parser)]
