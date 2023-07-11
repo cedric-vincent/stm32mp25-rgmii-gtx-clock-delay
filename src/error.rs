@@ -16,6 +16,9 @@ pub(crate) enum Error {
 
 	#[error("invalid RGMII clock/data delay")]
 	InvalidClockDelay,
+
+	#[error("TODO")]
+	Benchmark,
 }
 
 #[derive(Error, Debug)]
