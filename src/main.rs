@@ -172,7 +172,7 @@ struct Options {
 enum Command {
 	Benchmark {
 		/// Device name
-		#[clap(short = 'D', long)]
+		#[clap(short, long)]
 		device: String,
 
 		#[command(flatten)]
@@ -197,16 +197,17 @@ enum Command {
 
 	Set {
 		/// Device name
-		#[clap(short = 'D', long)]
+		#[clap(short, long)]
 		device: String,
 
-		/// TODO
-		clock_delays: u8,
+		/// RGMII GTX clock delay (in ns)
+		#[clap(short, long, value_parser = clock_delay_parser)]
+		clock_delay: f32,
 	},
 
 	Get {
 		/// Device name
-		#[clap(short = 'D', long)]
+		#[clap(short, long)]
 		device: String,
 	}
 }
