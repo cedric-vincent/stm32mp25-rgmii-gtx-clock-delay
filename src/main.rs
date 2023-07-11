@@ -1,6 +1,10 @@
 mod error;
+mod benchmark;
+
 use error::Error;
-use clap::{Args, Parser, Subcommand};
+use benchmark::benchmark;
+
+use clap::{Parser, Subcommand};
 
 fn main () {
 	let options = Options::parse();
@@ -18,15 +22,15 @@ fn main () {
 
 fn main2 (options: Options) -> Result<(), Error> {
 	match options.command {
-		Command::Benchmark { .. }            => { todo!() }
-		Command::Set { device, clock_delay } => proceed(&device, Some(clock_delay))?,
-		Command::Get { device }              => proceed(&device, None)?,
+		Command::Benchmark { device, url, first_clock_delay, last_clock_delay, size_threshold, time_threshold } => benchmark(&device, &url, first_clock_delay, last_clock_delay, &size_threshold, time_threshold).unwrap(), // TODO
+		Command::Set { device, clock_delay } => access_clock_delay(&device, Some(clock_delay))?,
+		Command::Get { device }              => access_clock_delay(&device, None)?,
 	}
 
 	Ok(())
 }
 
-fn proceed (device: &str, clock_delay: Option<f32>) -> Result<(), Error> {
+fn access_clock_delay (device: &str, clock_delay: Option<f32>) -> Result<(), Error> {
 	let dt_name = get_dt_name(&device)?;
 	log::info!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
 
@@ -243,8 +247,9 @@ enum Command {
 		#[clap(short, long)]
 		device: String,
 
-		#[command(flatten)]
-		urls: Urls,
+		/// Benchmark by fetching content from this URL (recommended size > 200 MiB)
+		#[clap(short, long)]
+		url: String,
 
 		/// First benchmarked value (in ns)
 		#[clap(short, long, default_value = "0", value_parser = clock_delay_parser)]
@@ -278,18 +283,6 @@ enum Command {
 		#[clap(short, long)]
 		device: String,
 	}
-}
-
-#[derive(Args)]
-#[group(required = true, multiple = true)]
-struct Urls {
-	/// Benchmark by downloading (and discarding) content from URL
-	#[clap(short, long)]
-	download_from: Option<String>,
-
-	/// Benchmark by uploading (random) content to URL
-	#[clap(short, long)]
-	upload_to: Option<String>,
 }
 
 fn clock_delay_parser (value: &str) -> Result<f32, String> {
