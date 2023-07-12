@@ -6,29 +6,26 @@ use crate::clock_delay;
 use byte_unit::Byte;
 use std::time::Duration;
 
-pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	use std::io::Write;
 
 	let mut results = vec![];
 
 	println!("Using URL {url}");
 
+	// TODO: in one direction then in the opposite
 	for clock_delay in clock_delay::VALID_VALUES.iter() {
 		let clock_delay = *clock_delay;
-
-		if clock_delay < first_clock_delay || clock_delay > last_clock_delay {
-			continue;
-		}
 
 		clock_delay::access(device, Some(clock_delay), false)?;
 
 		let start = ethtool::get_nic_stats(device).unwrap();
 
-		let message = format!("Benchmarking with RGMII GTX clock delay = {clock_delay} nanoseconds... ");
+		let message = format!("Benchmarking with RGMII GTX clock delay = {clock_delay:.2} nanoseconds... ");
 		let _ = std::io::stdout().write(message.as_bytes());
 		let _ = std::io::stdout().flush();
 
-		let status = download(url, first_clock_delay, last_clock_delay, size_threshold, time_threshold);
+		let status = download(url, size_threshold, time_threshold);
 		if let Err(error) = &status {
 			if let Error::Download(error) = error {
 				if error.is_operation_timedout() {
@@ -39,6 +36,7 @@ pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_cloc
 		}
 		status?;
 
+		// TODO: handle all these .unwrap()
 		let end = ethtool::get_nic_stats(device).unwrap();
 
 		let mmc_rx_crc_error = end.get("mmc_rx_crc_error").unwrap() - start.get("mmc_rx_crc_error").unwrap();
@@ -61,7 +59,7 @@ pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_cloc
 	Ok(())
 }
 
-fn download(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	use curl::easy as curl;
 
 	let mut handle = curl::Easy::new();
