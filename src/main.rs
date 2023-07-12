@@ -18,7 +18,7 @@ fn main () {
 	        .init();
 
 	let status = match main2(options) {
-		Ok(())     => { log::info!("Success!"); 0 }
+		Ok(())     => { 0 }
 		Err(error) => { log::error!("{error}"); 1 }
 	};
 
@@ -32,8 +32,8 @@ fn main2 (options: Options) -> Result<(), Error> {
 			url:               b,
 			first_clock_delay: c,
 			last_clock_delay:  d,
-			size_threshold:    e,
-			time_threshold:    f }       => benchmark::perform(&a, &b, c, d, e, f)?,
+			speed_low_limit:   e,
+			timeout:           f }       => benchmark::perform(&a, &b, c, d, e, f)?,
 		Command::Set { device, clock_delay } => clock_delay::access(&device, Some(clock_delay), true)?,
 		Command::Get { device }              => clock_delay::access(&device, None, true)?,
 	}
@@ -59,7 +59,7 @@ enum Command {
 		#[clap(short, long)]
 		device: String,
 
-		/// Benchmark by fetching content from this URL (recommended size > 100 MiB)
+		/// Benchmark by fetching data from this URL (recommended size > 100 MiB)
 		#[clap(short, long, default_value = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz")]
 		url: String,
 
@@ -71,13 +71,13 @@ enum Command {
 		#[clap(short, long, default_value = "3.25", value_parser = clock_delay::parser)]
 		last_clock_delay: f32,
 
-		/// Skip if throughput is less than SIZE_THRESHOLD bytes/second during TIME_THRESHOLD seconds
-		#[clap(short, long, default_value = "100 kiB", value_parser = size_threshold_parser)]
-		size_threshold: Byte,
+		/// Skip if transfer rate is below SPEED_LOW_LIMIT bytes/second during more than TIMEOUT seconds
+		#[clap(short, long, default_value = "100 kiB", value_parser = speed_low_limit_parser)]
+		speed_low_limit: Byte,
 
-		/// Skip if throughput is less than SIZE_THRESHOLD bytes/second during TIME_THRESHOLD seconds
-		#[clap(short, long, default_value = "10")]
-		time_threshold: u64,
+		/// Timemout for SPEED_LOW_LIMIT and for the connection phase.
+		#[clap(short, long, default_value = "5")]
+		timeout: u64,
 	},
 
 	Set {
@@ -97,6 +97,6 @@ enum Command {
 	}
 }
 
-fn size_threshold_parser (value: &str) -> Result<Byte, String> {
+fn speed_low_limit_parser (value: &str) -> Result<Byte, String> {
 	Byte::from_str(value).map_err(|error| format!("not a valid size in bytes ({error})"))
 }

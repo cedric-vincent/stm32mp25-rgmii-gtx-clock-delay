@@ -1,6 +1,10 @@
 use crate::error::{self, Error};
 
 pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<(), Error> {
+	if !verbose && clock_delay.is_some() {
+		log::info!("setting RGMII GTX clock delay to {} nanoseconds", clock_delay.unwrap());
+	}
+
 	let dt_name = get_dt_name(&device)?;
 	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
