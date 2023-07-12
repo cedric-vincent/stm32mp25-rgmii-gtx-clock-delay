@@ -1,12 +1,26 @@
 mod status_bar;
 
 use crate::error::Error;
+use crate::clock_delay;
+
 use status_bar::StatusBar;
 use byte_unit::Byte;
 use std::time::Duration;
 
-pub(crate) fn perform(_device: &str, url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
-	perform_once(url, _first_clock_delay, _last_clock_delay, size_threshold, time_threshold)
+pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+	for value in clock_delay::VALID_VALUES.iter() {
+		let value = *value;
+
+		if value < first_clock_delay || value > last_clock_delay {
+			continue;
+		}
+
+		clock_delay::access(device, Some(value))?;
+
+		perform_once(url, first_clock_delay, last_clock_delay, size_threshold, time_threshold)?;
+	}
+
+	Ok(())
 }
 
 fn perform_once(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {

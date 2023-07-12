@@ -199,6 +199,27 @@ fn test_convert_bits () {
 	assert!(convert_to_bits(0.25).is_err());
 }
 
+lazy_static! {
+	pub(crate) static ref VALID_VALUES: Vec<f32> = {
+		let mut valid_values = vec![0 as f32, 0.3];
+		valid_values.append(&mut (2..=13).map(|x| x as f32 * 0.25).collect());
+		valid_values
+	};
+}
+
+pub(crate) fn parser (value: &str) -> Result<f32, String> {
+	match value.parse::<f32>() {
+		Err(error) => Err(format!("not a floating point value ({error})")),
+		Ok(value)  => {
+			if VALID_VALUES.contains(&value) {
+				Ok(value)
+			} else {
+				Err(format!("must be one of {:?}", *VALID_VALUES))
+			}
+		}
+	}
+}
+
 #[derive(Debug)]
 struct Gpio {
 	bank: char,

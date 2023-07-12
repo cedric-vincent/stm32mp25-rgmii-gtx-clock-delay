@@ -6,6 +6,9 @@ use error::Error;
 use clap::{Parser, Subcommand};
 use byte_unit::Byte;
 
+#[macro_use]
+extern crate lazy_static;
+
 fn main () {
 	let options = Options::parse();
 
@@ -61,11 +64,11 @@ enum Command {
 		url: String,
 
 		/// First benchmarked value (in ns)
-		#[clap(short, long, default_value = "0", value_parser = clock_delay_parser)]
+		#[clap(short, long, default_value = "0", value_parser = clock_delay::parser)]
 		first_clock_delay: f32,
 
 		/// Last benchmarked value (in ns)
-		#[clap(short, long, default_value = "3.25", value_parser = clock_delay_parser)]
+		#[clap(short, long, default_value = "3.25", value_parser = clock_delay::parser)]
 		last_clock_delay: f32,
 
 		/// Skip if throughput is less than SIZE_THRESHOLD bytes / TIME_THRESHOLD seconds
@@ -83,7 +86,7 @@ enum Command {
 		device: String,
 
 		/// RGMII GTX clock delay (in ns)
-		#[clap(short, long, value_parser = clock_delay_parser)]
+		#[clap(short, long, value_parser = clock_delay::parser)]
 		clock_delay: f32,
 	},
 
@@ -91,22 +94,6 @@ enum Command {
 		/// Device name
 		#[clap(short, long)]
 		device: String,
-	}
-}
-
-fn clock_delay_parser (value: &str) -> Result<f32, String> {
-	match value.parse::<f32>() {
-		Err(error) => Err(format!("not a floating point value ({error})")),
-		Ok(value)  => {
-			let mut valid_values = vec![0 as f32, 0.3];
-			valid_values.append(&mut (2..=13).map(|x| x as f32 * 0.25).collect());
-
-			if valid_values.contains(&value) {
-				Ok(value)
-			} else {
-				Err(format!("must be one of {:?}", valid_values))
-			}
-		}
 	}
 }
 
