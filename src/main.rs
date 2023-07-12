@@ -13,13 +13,13 @@ fn main () {
 	let options = Options::parse();
 
 	let _ = stderrlog::new()
-	        .verbosity(options.verbose as usize + 2)
+	        .verbosity(options.verbose as usize)
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
 
 	let status = match main2(options) {
 		Ok(())     => { 0 }
-		Err(error) => { log::error!("{error}"); 1 }
+		Err(error) => { eprintln!("Error: {error}"); 1 }
 	};
 
 	std::process::exit(status);

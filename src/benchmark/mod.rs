@@ -1,31 +1,38 @@
-mod status_bar;
 mod ethtool;
 
 use crate::error::Error;
 use crate::clock_delay;
 
-use status_bar::StatusBar;
 use byte_unit::Byte;
 use std::time::Duration;
 
 pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
-	for value in clock_delay::VALID_VALUES.iter() {
-		let value = *value;
+	use std::io::Write;
 
-		if value < first_clock_delay || value > last_clock_delay {
+	let mut results = vec![];
+
+	println!("Using URL {url}");
+
+	for clock_delay in clock_delay::VALID_VALUES.iter() {
+		let clock_delay = *clock_delay;
+
+		if clock_delay < first_clock_delay || clock_delay > last_clock_delay {
 			continue;
 		}
 
-		clock_delay::access(device, Some(value), false)?;
+		clock_delay::access(device, Some(clock_delay), false)?;
 
 		let start = ethtool::get_nic_stats(device).unwrap();
+
+		let message = format!("Benchmarking with RGMII GTX clock delay = {clock_delay} nanoseconds... ");
+		let _ = std::io::stdout().write(message.as_bytes());
+		let _ = std::io::stdout().flush();
 
 		let status = download(url, first_clock_delay, last_clock_delay, size_threshold, time_threshold);
 		if let Err(error) = &status {
 			if let Error::Download(error) = error {
 				if error.is_operation_timedout() {
-					eprintln!("");
-					log::warn!("{error}");
+					println!("{error}");
 					continue;
 				}
 			}
@@ -38,16 +45,24 @@ pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_cloc
 		let rx_pkt_n         = end.get("rx_pkt_n").unwrap() - start.get("rx_pkt_n").unwrap();
 		let percent          = (100 * mmc_rx_crc_error) as f64 / rx_pkt_n as f64;
 
-		log::info!("CRC errors per packet: {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})");
+		println!("CRC errors per packet: {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})");
+
+		results.push((clock_delay, percent));
 	}
+
+	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+	print!("RGMII GTX clock delay sorted from best to worst: ");
+	for (clock_delay, _) in &results {
+		print!("{clock_delay}, ");
+	}
+	println!("");
 
 	Ok(())
 }
 
 fn download(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	use curl::easy as curl;
-
-	log::info!("fetching data from {url}");
 
 	let mut handle = curl::Easy::new();
 
@@ -61,18 +76,10 @@ fn download(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_thr
 	handle.low_speed_time(time_threshold)?;
 	handle.connect_timeout(time_threshold)?;
 
-	let total_size = match (handle.perform(), handle.content_length_download()) {
-		(Ok(_), Ok(length)) => length as u64,
-		_                   => 0,
-	};
-
-	let mut transfer_status = StatusBar::new(total_size, Duration::from_secs(1));
-
 	let curl_result = {
 		let mut transfer = handle.transfer();
 
 		transfer.write_function(|data| {
-			transfer_status.update(data.len() as u64);
 			Ok(data.len())
 		})?;
 
@@ -80,7 +87,6 @@ fn download(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_thr
 	};
 
 	curl_result?;
-	transfer_status.end();
 
 	Ok(())
 }
