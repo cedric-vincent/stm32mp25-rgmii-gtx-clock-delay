@@ -1,20 +1,20 @@
 use crate::error::{self, Error};
 
-pub(crate) fn access (device: &str, clock_delay: Option<f32>) -> Result<(), Error> {
+pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<(), Error> {
 	let dt_name = get_dt_name(&device)?;
-	log::info!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
-
-	let gpio = get_gpio(&dt_name)?;
-	log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
-
+	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
-	log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
-
-	let value = match clock_delay {
+	let value   = match clock_delay {
 		None              => get_value(&address)?,
 		Some(clock_delay) => set_value(&address, clock_delay)?,
 	};
-	log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
+
+	if verbose {
+		log::info!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
+		log::info!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
+		log::info!("  ↳ its delay can be accessed at address {address} in /dev/mem");
+		log::info!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
+	}
 
 	Ok(())
 }

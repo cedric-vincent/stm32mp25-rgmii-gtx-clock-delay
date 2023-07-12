@@ -8,6 +8,8 @@ use byte_unit::Byte;
 use std::time::Duration;
 
 pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+	log::info!("using URL: {url}");
+
 	for value in clock_delay::VALID_VALUES.iter() {
 		let value = *value;
 
@@ -15,15 +17,26 @@ pub(crate) fn perform(device: &str, url: &str, first_clock_delay: f32, last_cloc
 			continue;
 		}
 
-		clock_delay::access(device, Some(value))?;
+		log::info!("setting RGMII GTX clock delay to {value} nanoseconds");
+		clock_delay::access(device, Some(value), false)?;
 
-		perform_once(url, first_clock_delay, last_clock_delay, size_threshold, time_threshold)?;
+		let status = download(url, first_clock_delay, last_clock_delay, size_threshold, time_threshold);
+		if let Err(error) = &status {
+			if let Error::Download(error) = error {
+				if error.is_operation_timedout() {
+					eprintln!("");
+					log::warn!("{error}");
+					continue;
+				}
+			}
+		}
+		status?;
 	}
 
 	Ok(())
 }
 
-fn perform_once(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+fn download(url: &str, _first_clock_delay: f32, _last_clock_delay: f32, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	use curl::easy as curl;
 
 	let mut handle = curl::Easy::new();

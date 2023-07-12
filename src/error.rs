@@ -17,8 +17,8 @@ pub(crate) enum Error {
 	#[error("invalid RGMII clock/data delay")]
 	InvalidClockDelay,
 
-	#[error("TODO")]
-	Benchmark(#[from] curl::Error),
+	#[error("can't download: {0}")]
+	Download(#[from] curl::Error),
 }
 
 #[derive(Error, Debug)]

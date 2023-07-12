@@ -34,8 +34,8 @@ fn main2 (options: Options) -> Result<(), Error> {
 			last_clock_delay:  d,
 			size_threshold:    e,
 			time_threshold:    f }       => benchmark::perform(&a, &b, c, d, e, f)?,
-		Command::Set { device, clock_delay } => clock_delay::access(&device, Some(clock_delay))?,
-		Command::Get { device }              => clock_delay::access(&device, None)?,
+		Command::Set { device, clock_delay } => clock_delay::access(&device, Some(clock_delay), true)?,
+		Command::Get { device }              => clock_delay::access(&device, None, true)?,
 	}
 
 	Ok(())
@@ -59,8 +59,8 @@ enum Command {
 		#[clap(short, long)]
 		device: String,
 
-		/// Benchmark by fetching content from this URL (recommended size > 100 MiB; ex. https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz)
-		#[clap(short, long)]
+		/// Benchmark by fetching content from this URL (recommended size > 100 MiB)
+		#[clap(short, long, default_value = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz")]
 		url: String,
 
 		/// First benchmarked value (in ns)
@@ -71,12 +71,12 @@ enum Command {
 		#[clap(short, long, default_value = "3.25", value_parser = clock_delay::parser)]
 		last_clock_delay: f32,
 
-		/// Skip if throughput is less than SIZE_THRESHOLD bytes / TIME_THRESHOLD seconds
-		#[clap(short, long, default_value = "5 MiB", value_parser = size_threshold_parser)]
+		/// Skip if throughput is less than SIZE_THRESHOLD bytes/second during TIME_THRESHOLD seconds
+		#[clap(short, long, default_value = "100 kiB", value_parser = size_threshold_parser)]
 		size_threshold: Byte,
 
-		/// Skip if throughput is less than SIZE_THRESHOLD bytes / TIME_THRESHOLD seconds
-		#[clap(short, long, default_value = "5")]
+		/// Skip if throughput is less than SIZE_THRESHOLD bytes/second during TIME_THRESHOLD seconds
+		#[clap(short, long, default_value = "10")]
 		time_threshold: u64,
 	},
 
