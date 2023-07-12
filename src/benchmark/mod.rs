@@ -45,9 +45,10 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 
 		println!("CRC errors per packet: {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})");
 
-		results.push((clock_delay, percent));
+		results.push((clock_delay, percent /* TODO: elapsed_time */));
 	}
 
+	// TODO: consider elapsed_time and neighbors too!
 	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
 	print!("RGMII GTX clock delay sorted from best to worst: ");
