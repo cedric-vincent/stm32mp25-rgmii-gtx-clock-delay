@@ -3,8 +3,8 @@ mod clock_delay;
 mod benchmark;
 
 use error::Error;
-
 use clap::{Parser, Subcommand};
+use byte_unit::Byte;
 
 fn main () {
 	let options = Options::parse();
@@ -30,7 +30,7 @@ fn main2 (options: Options) -> Result<(), Error> {
 			first_clock_delay: c,
 			last_clock_delay:  d,
 			size_threshold:    e,
-			time_threshold:    f }       => benchmark::perform(&a, &b, c, d, &e, f)?,
+			time_threshold:    f }       => benchmark::perform(&a, &b, c, d, e, f)?,
 		Command::Set { device, clock_delay } => clock_delay::access(&device, Some(clock_delay))?,
 		Command::Get { device }              => clock_delay::access(&device, None)?,
 	}
@@ -56,7 +56,7 @@ enum Command {
 		#[clap(short, long)]
 		device: String,
 
-		/// Benchmark by fetching content from this URL (recommended size > 200 MiB)
+		/// Benchmark by fetching content from this URL (recommended size > 100 MiB; ex. https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz)
 		#[clap(short, long)]
 		url: String,
 
@@ -68,13 +68,13 @@ enum Command {
 		#[clap(short, long, default_value = "3.25", value_parser = clock_delay_parser)]
 		last_clock_delay: f32,
 
-		/// Skip if throughput is less than SIZE_THRESHOLD/TIME_THRESHOLD
-		#[clap(short, long, default_value = "5 MiB")]
-		size_threshold: String,
+		/// Skip if throughput is less than SIZE_THRESHOLD bytes / TIME_THRESHOLD seconds
+		#[clap(short, long, default_value = "5 MiB", value_parser = size_threshold_parser)]
+		size_threshold: Byte,
 
-		/// Skip if throughput is less than SIZE_THRESHOLD/TIME_THRESHOLD
+		/// Skip if throughput is less than SIZE_THRESHOLD bytes / TIME_THRESHOLD seconds
 		#[clap(short, long, default_value = "5")]
-		time_threshold: usize,
+		time_threshold: u64,
 	},
 
 	Set {
@@ -96,8 +96,8 @@ enum Command {
 
 fn clock_delay_parser (value: &str) -> Result<f32, String> {
 	match value.parse::<f32>() {
-		Err(_)    => Err(format!("not a floating point value")),
-		Ok(value) => {
+		Err(error) => Err(format!("not a floating point value ({error})")),
+		Ok(value)  => {
 			let mut valid_values = vec![0 as f32, 0.3];
 			valid_values.append(&mut (2..=13).map(|x| x as f32 * 0.25).collect());
 
@@ -108,4 +108,8 @@ fn clock_delay_parser (value: &str) -> Result<f32, String> {
 			}
 		}
 	}
+}
+
+fn size_threshold_parser (value: &str) -> Result<Byte, String> {
+	Byte::from_str(value).map_err(|error| format!("not a valid size in bytes ({error})"))
 }
