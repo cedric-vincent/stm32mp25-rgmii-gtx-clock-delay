@@ -7,14 +7,35 @@ use byte_unit::Byte;
 use std::time::{Instant, Duration};
 
 pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
-	use std::io::Write;
-
-	let mut results = vec![];
+	let reversed_valid_values = clock_delay::VALID_VALUES.iter().cloned().rev().collect::<Vec<_>>();
 
 	println!("Using URL {url}");
 
-	// TODO: in one direction then in the opposite
-	for clock_delay in clock_delay::VALID_VALUES.iter() {
+	println!("Pass 1/2");
+	let results1 = perform_single_pass(device, url, size_threshold, time_threshold, &clock_delay::VALID_VALUES);
+
+	println!("Pass 2/2");
+	let results2 = perform_single_pass(device, url, size_threshold, time_threshold, &reversed_valid_values);
+
+/*
+	// TODO: consider duration and neighbors too!
+	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+	print!("RGMII GTX clock delay sorted from best to worst: ");
+	for (clock_delay, _, _) in &results {
+		print!("{clock_delay}, ");
+	}
+	println!("");
+*/
+	Ok(())
+}
+
+fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<Vec<(f32, f64, Duration)>, Error> {
+	let mut results = vec![];
+
+	for clock_delay in delays.iter() {
+		use std::io::Write;
+
 		let clock_delay = *clock_delay;
 
 		clock_delay::access(device, Some(clock_delay), false)?;
@@ -43,21 +64,12 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 		let percent          = (100 * mmc_rx_crc_error) as f64 / rx_pkt_n as f64;
 		let duration         = end.instant - start.instant;
 
-		println!("It took {:.2}s; CRC error rate is {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f64());
+		println!("It took {:.2}s; CRC error rate is {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f32());
 
 		results.push((clock_delay, percent, duration));
 	}
 
-	// TODO: consider duration and neighbors too!
-	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-
-	print!("RGMII GTX clock delay sorted from best to worst: ");
-	for (clock_delay, _, _) in &results {
-		print!("{clock_delay}, ");
-	}
-	println!("");
-
-	Ok(())
+	Ok(results)
 }
 
 fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
