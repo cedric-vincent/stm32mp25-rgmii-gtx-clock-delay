@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::clock_delay;
 
 use byte_unit::Byte;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 
 pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	use std::io::Write;
@@ -19,11 +19,11 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 
 		clock_delay::access(device, Some(clock_delay), false)?;
 
-		let start = ethtool::get_nic_stats(device).unwrap();
-
 		let message = format!("Benchmarking with RGMII GTX clock delay = {clock_delay:.2} nanoseconds... ");
 		let _ = std::io::stdout().write(message.as_bytes());
 		let _ = std::io::stdout().flush();
+
+		let start = get_info(device)?;
 
 		let status = download(url, size_threshold, time_threshold);
 		if let Err(error) = &status {
@@ -36,23 +36,23 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 		}
 		status?;
 
-		// TODO: handle all these .unwrap()
-		let end = ethtool::get_nic_stats(device).unwrap();
+		let end = get_info(device)?;
 
-		let mmc_rx_crc_error = end.get("mmc_rx_crc_error").unwrap() - start.get("mmc_rx_crc_error").unwrap();
-		let rx_pkt_n         = end.get("rx_pkt_n").unwrap() - start.get("rx_pkt_n").unwrap();
+		let mmc_rx_crc_error = end.mmc_rx_crc_error - start.mmc_rx_crc_error;
+		let rx_pkt_n         = end.rx_pkt_n         - start.rx_pkt_n;
 		let percent          = (100 * mmc_rx_crc_error) as f64 / rx_pkt_n as f64;
+		let duration         = end.instant - start.instant;
 
-		println!("CRC errors per packet: {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})");
+		println!("It took {:.2}s; CRC error rate is {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f64());
 
-		results.push((clock_delay, percent /* TODO: elapsed_time */));
+		results.push((clock_delay, percent, duration));
 	}
 
-	// TODO: consider elapsed_time and neighbors too!
+	// TODO: consider duration and neighbors too!
 	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
 	print!("RGMII GTX clock delay sorted from best to worst: ");
-	for (clock_delay, _) in &results {
+	for (clock_delay, _, _) in &results {
 		print!("{clock_delay}, ");
 	}
 	println!("");
@@ -88,4 +88,21 @@ fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), 
 	curl_result?;
 
 	Ok(())
+}
+
+fn get_info(device: &str) -> Result<Info, Error> {
+	// TODO: handle all these .unwrap()
+	let nic_stats = ethtool::get_nic_stats(device).unwrap();
+
+	Ok(Info {
+		mmc_rx_crc_error: *nic_stats.get("mmc_rx_crc_error").unwrap(),
+		rx_pkt_n:         *nic_stats.get("rx_pkt_n").unwrap(),
+		instant:          Instant::now(),
+	})
+}
+
+struct Info {
+	mmc_rx_crc_error: u64,
+	rx_pkt_n:         u64,
+	instant:          Instant,
 }
