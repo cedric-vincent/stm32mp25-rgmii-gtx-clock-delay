@@ -52,6 +52,7 @@ struct Options {
 #[derive(Subcommand)]
 #[clap(author, version, about = "Calibrate STM32MP25 RGMII TX clock delay")]
 enum Command {
+	/// Benchmark all possible RGMII GTX clock delays
 	Benchmark {
 		/// Device name
 		#[clap(short, long)]
@@ -70,6 +71,7 @@ enum Command {
 		timeout: u64,
 	},
 
+	/// Set RGMII GTX clock delay
 	Set {
 		/// Device name
 		#[clap(short, long)]
@@ -80,6 +82,7 @@ enum Command {
 		clock_delay: f32,
 	},
 
+	/// Get RGMII GTX clock delay
 	Get {
 		/// Device name
 		#[clap(short, long)]
