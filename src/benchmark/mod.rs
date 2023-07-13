@@ -5,6 +5,7 @@ use crate::clock_delay;
 
 use byte_unit::Byte;
 use std::time::{Instant, Duration};
+use std::collections::HashMap;
 
 pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	let reversed_valid_values = clock_delay::VALID_VALUES.iter().cloned().rev().collect::<Vec<_>>();
@@ -12,26 +13,31 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 	println!("Using URL {url}");
 
 	println!("Pass 1/2");
-	let results1 = perform_single_pass(device, url, size_threshold, time_threshold, &clock_delay::VALID_VALUES);
+	let results1 = perform_single_pass(device, url, size_threshold, time_threshold, &clock_delay::VALID_VALUES)?;
 
 	println!("Pass 2/2");
-	let results2 = perform_single_pass(device, url, size_threshold, time_threshold, &reversed_valid_values);
+	let results2 = perform_single_pass(device, url, size_threshold, time_threshold, &reversed_valid_values)?;
 
-/*
-	// TODO: consider duration and neighbors too!
+	let mut results = Vec::new();
+	for (key, value1) in results1.iter() {
+		if let Some(value2) = results2.get(key) {
+			results.push((key, *value1 + *value2));
+		}
+	}
+
 	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
 	print!("RGMII GTX clock delay sorted from best to worst: ");
-	for (clock_delay, _, _) in &results {
+	for (clock_delay, _) in &results {
 		print!("{clock_delay}, ");
 	}
 	println!("");
-*/
+
 	Ok(())
 }
 
-fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<Vec<(f32, f64, Duration)>, Error> {
-	let mut results = vec![];
+fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<HashMap<String, f64>, Error> {
+	let mut results = HashMap::new();
 
 	for clock_delay in delays.iter() {
 		use std::io::Write;
@@ -40,7 +46,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 
 		clock_delay::access(device, Some(clock_delay), false)?;
 
-		let message = format!("Benchmarking with RGMII GTX clock delay = {clock_delay:.2} nanoseconds... ");
+		let message = format!("Benchmarking RGMII GTX clock delay = {clock_delay:.2} nanoseconds... ");
 		let _ = std::io::stdout().write(message.as_bytes());
 		let _ = std::io::stdout().flush();
 
@@ -66,7 +72,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 
 		println!("It took {:.2}s; CRC error rate is {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f32());
 
-		results.push((clock_delay, percent, duration));
+		results.insert(format!("{clock_delay:.2}"), percent);
 	}
 
 	Ok(results)
