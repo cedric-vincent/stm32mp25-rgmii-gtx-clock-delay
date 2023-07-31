@@ -4,16 +4,17 @@ pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> 
 	let dt_name = get_dt_name(&device)?;
 	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
-	let value   = match clock_delay {
-		None              => get_value(&address)?,
-		Some(clock_delay) => set_value(&address, clock_delay)?,
-	};
+	let mut value = Value::mmap(&address)?;
+
+	if let Some(clock_delay) = clock_delay {
+		value.set(clock_delay)?;
+	}
 
 	if verbose {
 		println!("device named \"{device}\" is known as \"{dt_name}\" in device-tree");
 		println!("↳ its RGMII GTX clock is connected to GPIO {gpio}");
 		println!("  ↳ its delay can be accessed at address {address} in /dev/mem");
-		println!("    ↳ its value is {value:#x} ({} nanoseconds)", convert_to_ns(value)?);
+		println!("    ↳ its value is {:#x} ({} nanoseconds)", value.get()?, value.get_as_ns()?);
 	}
 
 	Ok(())
@@ -110,93 +111,107 @@ fn get_address (gpio: &Gpio) -> Result<Address, error::GetAddress> {
 	}
 }
 
-fn get_value (address: &Address) -> Result<u32, Error> {
-	assert!(address.offset <= 28); // TODO
-
-	let value = unsafe { *mmap_value(address, true)? };
-	Ok((value >> address.offset) & 0xF)
+#[derive(Debug)]
+struct Value {
+	address: *mut u32,
+	offset:  u8,
+	mmap_addr: *mut libc::c_void,
+	mmap_len:  usize,
 }
 
-fn set_value (address: &Address, clock_delay: f32) -> Result<u32, Error> {
-	assert!(address.offset <= 28); // TODO
+impl Value {
+	pub fn mmap (address: &Address) -> Result<Self, error::MmapValue> {
+		assert!(address.offset <= 28); // Not yet supported.
 
-	let bits  = convert_to_bits(clock_delay)?;
-	let addr  = mmap_value(address, false)?;
-	let value = unsafe { *addr };
-	let value = (value & !(0xF << address.offset)) | (bits << address.offset);
+		use nix::unistd::{sysconf, SysconfVar};
+		use nix::sys::mman::{mmap, ProtFlags, MapFlags};
+		use std::os::unix::io::AsRawFd;
 
-	unsafe { *addr = value }
+		let handle      = std::fs::OpenOptions::new().read(true).write(true).open("/dev/mem")?;
+		let prot_flags  = ProtFlags::PROT_READ | ProtFlags::PROT_WRITE;
+		let page_size   = sysconf(SysconfVar::PAGE_SIZE)?.unwrap_or(4096) as usize;
+		let length      = std::num::NonZeroUsize::new(page_size).unwrap();
+		let page_base   = (address.base & !(page_size - 1)) as libc::off_t;
+		let page_offset = address.base & (page_size - 1);
+		let offset      = address.offset;
 
-	get_value(address)
-}
+		let address = unsafe { mmap(None, length, prot_flags, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)? };
 
-fn mmap_value (address: &Address, read_only: bool) -> Result<*mut u32, error::MmapValue> {
-	use nix::unistd::{sysconf, SysconfVar};
-	use nix::sys::mman::{mmap, ProtFlags, MapFlags};
-	use std::os::unix::io::AsRawFd;
+		log::debug!("mmaped address = {address:?}");
 
-	let (handle, prot_flags) = if read_only {
-		(std::fs::File::open("/dev/mem")?,
-		 ProtFlags::PROT_READ)
-	} else {
-		(std::fs::OpenOptions::new().read(true).write(true).open("/dev/mem")?,
-		 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE)
-	};
+		Ok(Value {
+			address: unsafe { address.add(page_offset) } as *mut u32,
+			offset,
+			mmap_addr: address,
+			mmap_len:  usize::from(length),
+		})
+	}
 
-	let page_size   = sysconf(SysconfVar::PAGE_SIZE)?.unwrap_or(4096) as usize;
-	let length      = std::num::NonZeroUsize::new(page_size).unwrap();
-	let page_base   = (address.base & !(page_size - 1)) as libc::off_t;
-	let page_offset = address.base & (page_size - 1);
+	pub fn get_as_ns (&self) -> Result<f32, Error> {
+		match self.get()? {
+			0          => Ok(0.0),
+			1          => Ok(0.3),
+			x @ 2..=12 => Ok(0.25 * x as f32),
+			13..=16    => Ok(3.25),
+			_          => Err(Error::InvalidClockDelay)
+		}
+	}
 
-	let address = unsafe { mmap(None, length, prot_flags, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)?.add(page_offset) };
+	pub fn get (&self) -> Result<u32, Error> {
+		let value = unsafe { *self.address };
+		Ok((value >> self.offset) & 0xF)
+	}
 
-	log::debug!("mmaped address = {address:?}");
-	Ok(address as *mut u32)
-}
+	pub fn set (&mut self, clock_delay: f32) -> Result<(), Error> {
+		let bits  = Self::convert_to_bits(clock_delay)?;
+		let value = unsafe { *self.address };
+		let value = (value & !(0xF << self.offset)) | (bits << self.offset);
 
-fn convert_to_ns(value: u32) -> Result<f32, Error> {
-	match value {
-		0          => Ok(0.0),
-		1          => Ok(0.3),
-		x @ 2..=12 => Ok(0.25 * x as f32),
-		13..=16    => Ok(3.25),
-		_          => Err(Error::InvalidClockDelay)
+		unsafe { *self.address = value }
+
+		Ok(())
+	}
+
+	pub fn convert_to_bits(ns: f32) -> Result<u32, Error> {
+		// floating point literals not allowed anymore in patterns:
+		// https://github.com/rust-lang/rust/issues/41620b
+		if ns == 0.3 {
+			Ok(1)
+		} else if ns >= 0.0
+		       && ns != 0.25
+		       && ns <= 3.25
+	               && ns % 0.25 == 0.0 {
+			Ok((ns * 4.0) as u32)
+		} else {
+			Err(Error::InvalidClockDelay)
+		}
 	}
 }
 
-fn convert_to_bits(ns: f32) -> Result<u32, Error> {
-	// floating point literals not allowed anymore in patterns:
-	// https://github.com/rust-lang/rust/issues/41620b
-	if ns == 0.3 {
-		Ok(1)
-	} else if ns >= 0.0
-	       && ns != 0.25
-	       && ns <= 3.25
-               && ns % 0.25 == 0.0 {
-		Ok((ns * 4.0) as u32)
-	} else {
-		Err(Error::InvalidClockDelay)
+impl Drop for Value {
+	fn drop (&mut self) {
+		unsafe { nix::sys::mman::munmap(self.mmap_addr, self.mmap_len).unwrap() }
 	}
 }
 
 #[test]
 fn test_convert_bits () {
-	assert_eq!(convert_to_bits(0.0).unwrap(),   0);
-	assert_eq!(convert_to_bits(0.3).unwrap(),   1);
-	assert_eq!(convert_to_bits(0.5).unwrap(),   2);
-	assert_eq!(convert_to_bits(0.75).unwrap(),  3);
-	assert_eq!(convert_to_bits(1.0).unwrap(),   4);
-	assert_eq!(convert_to_bits(1.25).unwrap(),  5);
-	assert_eq!(convert_to_bits(1.5).unwrap(),   6);
-	assert_eq!(convert_to_bits(1.75).unwrap(),  7);
-	assert_eq!(convert_to_bits(2.0).unwrap(),   8);
-	assert_eq!(convert_to_bits(2.25).unwrap(),  9);
-	assert_eq!(convert_to_bits(2.5).unwrap(),  10);
-	assert_eq!(convert_to_bits(2.75).unwrap(), 11);
-	assert_eq!(convert_to_bits(3.0).unwrap(),  12);
-	assert_eq!(convert_to_bits(3.25).unwrap(), 13);
-	assert!(convert_to_bits(1.2).is_err());
-	assert!(convert_to_bits(0.25).is_err());
+	assert_eq!(Value::convert_to_bits(0.0).unwrap(),   0);
+	assert_eq!(Value::convert_to_bits(0.3).unwrap(),   1);
+	assert_eq!(Value::convert_to_bits(0.5).unwrap(),   2);
+	assert_eq!(Value::convert_to_bits(0.75).unwrap(),  3);
+	assert_eq!(Value::convert_to_bits(1.0).unwrap(),   4);
+	assert_eq!(Value::convert_to_bits(1.25).unwrap(),  5);
+	assert_eq!(Value::convert_to_bits(1.5).unwrap(),   6);
+	assert_eq!(Value::convert_to_bits(1.75).unwrap(),  7);
+	assert_eq!(Value::convert_to_bits(2.0).unwrap(),   8);
+	assert_eq!(Value::convert_to_bits(2.25).unwrap(),  9);
+	assert_eq!(Value::convert_to_bits(2.5).unwrap(),  10);
+	assert_eq!(Value::convert_to_bits(2.75).unwrap(), 11);
+	assert_eq!(Value::convert_to_bits(3.0).unwrap(),  12);
+	assert_eq!(Value::convert_to_bits(3.25).unwrap(), 13);
+	assert!(Value::convert_to_bits(1.2).is_err());
+	assert!(Value::convert_to_bits(0.25).is_err());
 }
 
 lazy_static! {
