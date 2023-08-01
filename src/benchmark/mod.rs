@@ -5,7 +5,7 @@ use crate::clock_delay;
 
 use byte_unit::Byte;
 use std::time::{Instant, Duration};
-use std::collections::HashMap;
+use std::ops::Range;
 
 pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
 	let reversed_valid_values = clock_delay::VALID_VALUES.iter().cloned().rev().collect::<Vec<_>>();
@@ -18,26 +18,30 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 	println!("Pass 2/2");
 	let results2 = perform_single_pass(device, url, size_threshold, time_threshold, &reversed_valid_values)?;
 
-	let mut results = Vec::new();
-	for (key, value1) in results1.iter() {
-		if let Some(value2) = results2.get(key) {
-			results.push((key, *value1 + *value2));
-		}
+	let results = std::iter::zip(results1, results2.iter().rev()).map(|(a, b)| a + b).collect::<Vec<_>>();
+
+	let mut best_results = Vec::new();
+
+	for strike in find_strikes(&results) {
+		let middle = (strike.start as f32 + strike.end as f32) / 2.0;
+		let index1 = middle.floor() as usize;
+		let index2 = middle.ceil() as usize;
+		let best   = if results[index1] < results[index2] { index1 } else { index2 };
+		best_results.push(best);
 	}
 
-	results.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+	best_results.sort_by(|a, b| results[*b].partial_cmp(&results[*a]).unwrap());
 
-	print!("RGMII GTX clock delay sorted from best to worst: ");
-	for (clock_delay, _) in &results {
-		print!("{clock_delay}, ");
+	match best_results.pop() {
+		None        => println!("No reliable RGMII GTX clock delay found"),
+		Some(index) => println!("Best RGMII GTX clock delay: {:.2}", clock_delay::VALID_VALUES[index]),
 	}
-	println!("");
 
 	Ok(())
 }
 
-fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<HashMap<String, f64>, Error> {
-	let mut results = HashMap::new();
+fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<Vec<f32>, Error> {
+	let mut results = Vec::new();
 
 	for clock_delay in delays.iter() {
 		use std::io::Write;
@@ -57,6 +61,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 			if let Error::Download(error) = error {
 				if error.is_operation_timedout() {
 					println!("{error}");
+					results.push(f32::NAN);
 					continue;
 				}
 			}
@@ -67,13 +72,16 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 
 		let mmc_rx_crc_error = end.mmc_rx_crc_error - start.mmc_rx_crc_error;
 		let rx_pkt_n         = end.rx_pkt_n         - start.rx_pkt_n;
-		let percent          = (100 * mmc_rx_crc_error) as f64 / rx_pkt_n as f64;
+		let percent          = (100 * mmc_rx_crc_error) as f32 / rx_pkt_n as f32;
 		let duration         = end.instant - start.instant;
 
-		println!("It took {:.2}s; CRC error rate is {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f32());
+		// TODO: remove duration (unused)
+		println!("It took {:.2}s; CRC error rate was {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f32());
 
-		results.insert(format!("{clock_delay:.2}"), percent);
+		results.push(percent);
 	}
+
+	assert_eq!(results.len(), delays.len());
 
 	Ok(results)
 }
@@ -123,4 +131,52 @@ struct Info {
 	mmc_rx_crc_error: u64,
 	rx_pkt_n:         u64,
 	instant:          Instant,
+}
+
+fn find_strikes (array: &[f32]) -> Vec<Range<usize>> {
+	let mut strikes = Vec::new();
+	let mut start   = None;
+
+	for (index, value) in array.iter().enumerate() {
+		if value.is_nan() {
+			if let Some(index_start) = start {
+				strikes.push(Range { start: index_start, end: index - 1 });
+				start = None;
+			}
+		} else {
+			if start.is_none() {
+				start = Some(index);
+			}
+		}
+	}
+
+	if let Some(index_start) = start {
+		strikes.push(Range { start: index_start, end: array.len() - 1 });
+	}
+
+	strikes
+}
+
+#[test]
+fn test_find_strikes () {
+	let array = [f32::NAN, 1.89, 1.78, 1.88, 1.87, 1.99, 1.91, f32::NAN];
+	assert_eq!(find_strikes(&array), vec![(1 .. 6)]);
+
+	let array = [f32::NAN, 1.89, 1.78, 1.88, f32::NAN, 1.87, 1.99, 1.91, f32::NAN];
+	assert_eq!(find_strikes(&array), vec![(1 .. 3), (5 .. 7)]);
+
+	let array = [1.89, 1.78, 1.88, f32::NAN, 1.87, 1.99, 1.91];
+	assert_eq!(find_strikes(&array), vec![(0 .. 2), (4 .. 6)]);
+
+	let array = [f32::NAN, 1.87, 1.99, 1.91];
+	assert_eq!(find_strikes(&array), vec![(1 .. 3)]);
+
+	let array = [1.89, 1.78, 1.88, f32::NAN];
+	assert_eq!(find_strikes(&array), vec![(0 .. 2)]);
+
+	let array = [f32::NAN, 1.89, 1.78, f32::NAN, 1.88, 1.87, f32::NAN, 1.99, 1.91, f32::NAN];
+	assert_eq!(find_strikes(&array), vec![(1 .. 2), (4 .. 5), (7 .. 8)]);
+
+	let array = [f32::NAN];
+	assert_eq!(find_strikes(&array), Vec::new());
 }
