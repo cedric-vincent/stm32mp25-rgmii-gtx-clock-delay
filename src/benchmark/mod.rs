@@ -75,8 +75,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 		let percent          = (100 * mmc_rx_crc_error) as f32 / rx_pkt_n as f32;
 		let duration         = end.instant - start.instant;
 
-		// TODO: remove duration (unused)
-		println!("It took {:.2}s; CRC error rate was {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f32());
+		println!("Done in {:.2}s; CRC error rate was {percent:.2}% ({mmc_rx_crc_error}/{rx_pkt_n})", duration.as_secs_f32());
 
 		results.push(percent);
 	}
