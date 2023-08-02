@@ -1,6 +1,7 @@
 mod error;
 mod clock_delay;
 mod benchmark;
+mod device_tree;
 
 use error::Error;
 use clap::{Parser, Subcommand};

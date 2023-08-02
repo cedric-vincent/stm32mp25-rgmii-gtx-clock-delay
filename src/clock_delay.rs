@@ -1,7 +1,7 @@
 use crate::error::{self, Error};
 
 pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<(), Error> {
-	let dt_name = get_dt_name(&device)?;
+	let dt_name = crate::device_tree::get_name(&device)?;
 	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
 	let mut value = Value::mmap(&address)?;
@@ -20,28 +20,7 @@ pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> 
 	Ok(())
 }
 
-fn get_dt_name (dev_name: &str) -> Result<String, error::GetDtName> {
-	use std::io::BufRead;
-
-	let path   = format!("/sys/class/net/{dev_name}/device/uevent");
-	let handle = std::fs::File::open(path)?;
-	let reader = std::io::BufReader::new(handle);
-
-	for line in reader.lines().flatten() {
-		let mut tokens = line.split('=');
-
-		if tokens.next() == Some("OF_NAME") {
-			return match tokens.next() {
-				Some(token) => Ok(String::from(token)),
-				None        => Err(std::io::Error::from(std::io::ErrorKind::NotFound))?,
-			}
-		}
-	}
-
-	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
-}
-
-fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
+pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 	use std::io::BufRead;
 
 	let entries = std::fs::read_dir("/sys/kernel/debug/pinctrl/")?;
@@ -56,6 +35,11 @@ fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 		if tokens.next() != Some("soc:pinctrl") {
 			continue;
 		}
+
+		let pinctrl = match tokens.next() {
+			Some(value) => format!("pinctrl@{}", value),
+			None        => format!("pinctrl@???"),
+		};
 
 		let mut path = entry.path();
 		path.push("pinconf-pins");
@@ -88,6 +72,7 @@ fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 			return Ok(Gpio {
 				bank: bank.unwrap(),
 				line: line.unwrap(),
+				pinctrl,
 			});
 		}
 	}
@@ -163,28 +148,13 @@ impl Value {
 	}
 
 	pub fn set (&mut self, clock_delay: f32) -> Result<(), Error> {
-		let bits  = Self::convert_to_bits(clock_delay)?;
+		let bits  = convert_to_bits(clock_delay)?;
 		let value = unsafe { *self.address };
 		let value = (value & !(0xF << self.offset)) | (bits << self.offset);
 
 		unsafe { *self.address = value }
 
 		Ok(())
-	}
-
-	pub fn convert_to_bits(ns: f32) -> Result<u32, Error> {
-		// floating point literals not allowed anymore in patterns:
-		// https://github.com/rust-lang/rust/issues/41620b
-		if ns == 0.3 {
-			Ok(1)
-		} else if ns >= 0.0
-		       && ns != 0.25
-		       && ns <= 3.25
-	               && ns % 0.25 == 0.0 {
-			Ok((ns * 4.0) as u32)
-		} else {
-			Err(Error::InvalidClockDelay)
-		}
 	}
 }
 
@@ -194,24 +164,39 @@ impl Drop for Value {
 	}
 }
 
+pub(crate) fn convert_to_bits(ns: f32) -> Result<u32, Error> {
+	// floating point literals not allowed anymore in patterns:
+	// https://github.com/rust-lang/rust/issues/41620b
+	if ns == 0.3 {
+		Ok(1)
+	} else if ns >= 0.0
+	       && ns != 0.25
+	       && ns <= 3.25
+               && ns % 0.25 == 0.0 {
+		Ok((ns * 4.0) as u32)
+	} else {
+		Err(Error::InvalidClockDelay)
+	}
+}
+
 #[test]
 fn test_convert_bits () {
-	assert_eq!(Value::convert_to_bits(0.0).unwrap(),   0);
-	assert_eq!(Value::convert_to_bits(0.3).unwrap(),   1);
-	assert_eq!(Value::convert_to_bits(0.5).unwrap(),   2);
-	assert_eq!(Value::convert_to_bits(0.75).unwrap(),  3);
-	assert_eq!(Value::convert_to_bits(1.0).unwrap(),   4);
-	assert_eq!(Value::convert_to_bits(1.25).unwrap(),  5);
-	assert_eq!(Value::convert_to_bits(1.5).unwrap(),   6);
-	assert_eq!(Value::convert_to_bits(1.75).unwrap(),  7);
-	assert_eq!(Value::convert_to_bits(2.0).unwrap(),   8);
-	assert_eq!(Value::convert_to_bits(2.25).unwrap(),  9);
-	assert_eq!(Value::convert_to_bits(2.5).unwrap(),  10);
-	assert_eq!(Value::convert_to_bits(2.75).unwrap(), 11);
-	assert_eq!(Value::convert_to_bits(3.0).unwrap(),  12);
-	assert_eq!(Value::convert_to_bits(3.25).unwrap(), 13);
-	assert!(Value::convert_to_bits(1.2).is_err());
-	assert!(Value::convert_to_bits(0.25).is_err());
+	assert_eq!(convert_to_bits(0.0).unwrap(),   0);
+	assert_eq!(convert_to_bits(0.3).unwrap(),   1);
+	assert_eq!(convert_to_bits(0.5).unwrap(),   2);
+	assert_eq!(convert_to_bits(0.75).unwrap(),  3);
+	assert_eq!(convert_to_bits(1.0).unwrap(),   4);
+	assert_eq!(convert_to_bits(1.25).unwrap(),  5);
+	assert_eq!(convert_to_bits(1.5).unwrap(),   6);
+	assert_eq!(convert_to_bits(1.75).unwrap(),  7);
+	assert_eq!(convert_to_bits(2.0).unwrap(),   8);
+	assert_eq!(convert_to_bits(2.25).unwrap(),  9);
+	assert_eq!(convert_to_bits(2.5).unwrap(),  10);
+	assert_eq!(convert_to_bits(2.75).unwrap(), 11);
+	assert_eq!(convert_to_bits(3.0).unwrap(),  12);
+	assert_eq!(convert_to_bits(3.25).unwrap(), 13);
+	assert!(convert_to_bits(1.2).is_err());
+	assert!(convert_to_bits(0.25).is_err());
 }
 
 lazy_static! {
@@ -236,9 +221,10 @@ pub(crate) fn parser (value: &str) -> Result<f32, String> {
 }
 
 #[derive(Debug)]
-struct Gpio {
-	bank: char,
-	line: u8,
+pub(crate) struct Gpio {
+	pub bank: char,
+	pub line: u8,
+	pub pinctrl: String,
 }
 
 #[derive(Debug)]
@@ -249,7 +235,7 @@ struct Address {
 
 impl std::fmt::Display for Gpio {
 	fn fmt(&self, formatter: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-		write!(formatter, "{}{}", self.bank, self.line)
+		write!(formatter, "{}{} ({})", self.bank, self.line, self.pinctrl)
 	}
 }
 

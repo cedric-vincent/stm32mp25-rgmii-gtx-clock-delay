@@ -2,6 +2,7 @@ mod ethtool;
 
 use crate::error::Error;
 use crate::clock_delay;
+use crate::device_tree;
 
 use byte_unit::Byte;
 use std::time::{Instant, Duration};
@@ -34,7 +35,25 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 
 	match best_results.pop() {
 		None        => println!("No reliable RGMII GTX clock delay found"),
-		Some(index) => println!("Best RGMII GTX clock delay: {:.2}", clock_delay::VALID_VALUES[index]),
+		Some(index) => {
+			let best_value = clock_delay::VALID_VALUES[index];
+
+			println!("Best RGMII GTX clock delay is {:.2} ns", best_value);
+
+			let best_value = clock_delay::convert_to_bits(best_value).unwrap();
+			let dt_name    = device_tree::get_name(device)?;
+			let gpio       = clock_delay::get_gpio(&dt_name)?;
+			let nodes      = device_tree::find_nodes(&gpio);
+
+			if nodes.is_empty() {
+				log::error!("Can't find any device-tree node that uses GPIO {gpio}");
+			} else {
+				println!("To permanently use this RGMII GTX clock delay, add \"st,io-delay = <{best_value:#02x}>;\" into following device-tree node(s):");
+				for node in &nodes {
+					println!("\t{node}");
+				}
+			}
+		}
 	}
 
 	Ok(())
