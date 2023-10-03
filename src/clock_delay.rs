@@ -1,7 +1,7 @@
 use crate::error::{self, Error};
 
 pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<(), Error> {
-	let dt_name = crate::device_tree::get_name(&device)?;
+	let dt_name = crate::device_tree::get_name(device)?;
 	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
 	let mut value = Value::mmap(&address)?;
@@ -36,10 +36,7 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 			continue;
 		}
 
-		let pinctrl = match tokens.next() {
-			Some(value) => format!("pinctrl@{}", value),
-			None        => format!("pinctrl@???"),
-		};
+		let pinctrl = format!("pinctrl@{}", tokens.next().unwrap_or("???"));
 
 		let mut path = entry.path();
 		path.push("pinconf-pins");
@@ -58,7 +55,7 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 			let mut tokens = line.split('(');
 			let     tokens = tokens.nth(1).ok_or_else(error)?;
 			let mut tokens = tokens.split(')');
-			let     token  = tokens.nth(0).ok_or_else(error)?;
+			let     token  = tokens.next().ok_or_else(error)?;
 			let mut tokens = token.chars();
 
 			let magic = tokens.next();

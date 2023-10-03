@@ -76,13 +76,11 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 		let start = get_info(device)?;
 
 		let status = download(url, size_threshold, time_threshold);
-		if let Err(error) = &status {
-			if let Error::Download(error) = error {
-				if error.is_operation_timedout() {
-					println!("{error}");
-					results.push(f32::NAN);
-					continue;
-				}
+		if let Err(Error::Download(error)) = &status {
+			if error.is_operation_timedout() {
+				println!("{error}");
+				results.push(f32::NAN);
+				continue;
 			}
 		}
 		status?;
@@ -161,10 +159,8 @@ fn find_strikes (array: &[f32]) -> Vec<Range<usize>> {
 				strikes.push(Range { start: index_start, end: index - 1 });
 				start = None;
 			}
-		} else {
-			if start.is_none() {
-				start = Some(index);
-			}
+		} else if start.is_none() {
+			start = Some(index);
 		}
 	}
 
