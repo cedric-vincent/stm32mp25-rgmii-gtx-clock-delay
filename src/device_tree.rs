@@ -4,11 +4,12 @@ use std::io::Read;
 use crate::clock_delay::Gpio;
 use crate::error;
 
-pub(crate) fn get_name (device: &str) -> Result<String, error::GetDtName> {
+pub(crate) fn get_name (device: &str) -> Result<String, error::DTGetName> {
 	use std::io::BufRead;
 
 	let path   = format!("/sys/class/net/{device}/device/uevent");
-	let handle = std::fs::File::open(path)?;
+	let handle = std::fs::File::open(&path).map_err(|error| error::DTGetName::OpenFailed(path.clone(), error))?;
+
 	let reader = std::io::BufReader::new(handle);
 
 	for line in reader.lines().flatten() {
@@ -17,12 +18,12 @@ pub(crate) fn get_name (device: &str) -> Result<String, error::GetDtName> {
 		if tokens.next() == Some("OF_NAME") {
 			return match tokens.next() {
 				Some(token) => Ok(String::from(token)),
-				None        => Err(std::io::Error::from(std::io::ErrorKind::NotFound))?,
+				None        => Err(error::DTGetName::NotFound(device.into(), path))?,
 			}
 		}
 	}
 
-	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
+	Err(error::DTGetName::NotFound(device.into(), path))
 }
 
 pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {

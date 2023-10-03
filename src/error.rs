@@ -2,8 +2,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub(crate) enum Error {
-	#[error("can't get device name in current device-tree: {0}")]
-	GetDtName(#[from] GetDtName),
+	#[error("{0}")]
+	DTGetName(#[from] DTGetName),
 
 	#[error("can't get the GPIO connected to the RGMII GTX clock: {0}")]
 	GetGpio(#[from] GetGpio),
@@ -22,8 +22,13 @@ pub(crate) enum Error {
 }
 
 #[derive(Error, Debug)]
-#[error("{0}")]
-pub(crate) struct GetDtName(#[from] std::io::Error);
+pub(crate) enum DTGetName {
+	#[error("Can't open {0}: {1}")]
+	OpenFailed(String, std::io::Error),
+
+	#[error("Can't find device-tree name of {0} in {1}")]
+	NotFound(String, String),
+}
 
 #[derive(Error, Debug)]
 #[error("{0}")]
