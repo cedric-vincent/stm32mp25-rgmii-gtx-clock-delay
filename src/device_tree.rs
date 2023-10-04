@@ -18,12 +18,12 @@ pub(crate) fn get_name (device: &str) -> Result<String, error::DTGetName> {
 		if tokens.next() == Some("OF_NAME") {
 			return match tokens.next() {
 				Some(token) => Ok(String::from(token)),
-				None        => Err(error::DTGetName::NotFound(device.into(), path))?,
+				None        => Err(error::DTGetName::NotFound(path))?,
 			}
 		}
 	}
 
-	Err(error::DTGetName::NotFound(device.into(), path))
+	Err(error::DTGetName::NotFound(path))
 }
 
 pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {
