@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.75"
 byte-unit = "4.0.19"
 clap = { version = "4.3.11", features = ["derive"] }
 curl = "0.4.44"
@@ -14,4 +15,3 @@ libc = "0.2.147"
 log = "0.4.19"
 nix = "0.26.2"
 stderrlog = "0.5.4"
-thiserror = "1.0.43"

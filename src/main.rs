@@ -28,19 +28,22 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
 mod clock_delay;
 mod benchmark;
 mod device_tree;
 
-use error::Error;
 use clap::{Parser, Subcommand};
 use byte_unit::Byte;
 
 #[macro_use]
 extern crate lazy_static;
 
-fn main () {
+#[macro_use]
+extern crate anyhow;
+
+use anyhow::{Context, Result};
+
+fn main () -> Result<()> {
 	let options = Options::parse();
 
 	let _ = stderrlog::new()
@@ -48,23 +51,25 @@ fn main () {
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
 
-	let status = match main2(options) {
-		Ok(())     => { 0 }
-		Err(error) => { eprintln!("Error: {error}"); 1 }
-	};
-
-	std::process::exit(status);
+	main2(options)
 }
 
-fn main2 (options: Options) -> Result<(), Error> {
+fn main2 (options: Options) -> Result<()> {
 	match options.command {
-		Command::Benchmark {
-			device,
-			url,
-			speed_low_limit,
-			timeout }                    => benchmark::perform(&device, &url, speed_low_limit, timeout)?,
-		Command::Set { device, clock_delay } => clock_delay::access(&device, Some(clock_delay), true)?,
-		Command::Get { device }              => clock_delay::access(&device, None, true)?,
+		Command::Benchmark {device, url, speed_low_limit, timeout } => {
+			benchmark::perform(&device, &url, speed_low_limit, timeout)
+			.context("can't benchmark all possible RGMII GTX clock delays")?
+		}
+
+		Command::Set { device, clock_delay } => {
+			clock_delay::access(&device, Some(clock_delay), true)
+			.context("can't set RGMII GTX clock delay")?
+		}
+
+		Command::Get { device } => {
+			clock_delay::access(&device, None, true)
+			.context("can't get RGMII GTX clock delay")?
+		}
 
 		Command::License { } => {
 			println!("\n\
@@ -158,6 +163,6 @@ enum Command {
 	License { }
 }
 
-fn speed_low_limit_parser (value: &str) -> Result<Byte, String> {
-	Byte::from_str(value).map_err(|error| format!("not a valid size in bytes ({error})"))
+fn speed_low_limit_parser (value: &str) -> Result<Byte> {
+	Byte::from_str(value).map_err(|error| anyhow!("not a valid size in bytes ({error})"))
 }

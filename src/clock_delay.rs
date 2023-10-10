@@ -28,9 +28,9 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::{self, Error};
+use anyhow::{Context, Result};
 
-pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<(), Error> {
+pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<()> {
 	let dt_name = crate::device_tree::get_name(device)?;
 	let gpio    = get_gpio(&dt_name)?;
 	let address = get_address(&gpio)?;
@@ -50,12 +50,20 @@ pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> 
 	Ok(())
 }
 
-pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
+pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio> {
 	use std::io::BufRead;
 
-	let entries = std::fs::read_dir("/sys/kernel/debug/pinctrl/")?;
+	let path    = "/sys/kernel/debug/pinctrl/";
+	let entries = std::fs::read_dir("/sys/kernel/debug/pinctrl/")
+	              .map_err(|error| anyhow!("can't read directory {path}: {error}"))?;
+
+	let message = "can't find the GPIO connected to the RGMII GTX clock";
+
 	for entry in entries {
-		let entry = entry?;
+		let entry = match entry {
+			Err(error) => { log::warn!("{error} while reading {path}"); continue }
+			Ok(entry)  => { entry }
+		};
 
 		let file_name = entry.file_name();
 		let file_name = file_name.to_string_lossy();
@@ -71,11 +79,9 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 		let mut path = entry.path();
 		path.push("pinconf-pins");
 
-		let handle = std::fs::File::open(path)?;
+		let handle = std::fs::File::open(path).context("can't open {path}")?;
 		let reader = std::io::BufReader::new(handle);
 		let needle = format!("{}_RGMII_GTX_CLK", dt_name.to_uppercase());
-
-		let error = || { std::io::Error::from(std::io::ErrorKind::InvalidData) };
 
 		for line in reader.lines().flatten() {
 			if ! line.contains(&needle) {
@@ -83,9 +89,9 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 			}
 
 			let mut tokens = line.split('(');
-			let     tokens = tokens.nth(1).ok_or_else(error)?;
+			let     tokens = tokens.nth(1).ok_or(anyhow!(message))?;
 			let mut tokens = tokens.split(')');
-			let     token  = tokens.next().ok_or_else(error)?;
+			let     token  = tokens.next().ok_or(anyhow!(message))?;
 			let mut tokens = token.chars();
 
 			let magic = tokens.next();
@@ -104,20 +110,22 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio, error::GetGpio> {
 		}
 	}
 
-	Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
+	bail!(message)
 }
 
-fn get_address (gpio: &Gpio) -> Result<Address, error::GetAddress> {
+fn get_address (gpio: &Gpio) -> Result<Address> {
 	let path = format!("/sys/firmware/devicetree/base/__symbols__/gpio{}", gpio.bank.to_lowercase());
-	let path = std::fs::read_to_string(path)?;
+	let path = std::fs::read_to_string(path.clone()).map_err(|error| anyhow!("can't read {path}: {error}"))?;
 	let path = path.trim_end_matches('\0');
 
+	let anyhow = anyhow!("can't find the address of the GPIO connected to the RGMII GTX clock");
+
 	match path.split('@').last() {
-		None          => Err(std::io::Error::from(std::io::ErrorKind::NotFound))?,
+		None          => Err(anyhow),
 		Some(address) => {
 			match usize::from_str_radix(address, 16) {
 				Ok(address) => Ok(Address { base: address + 0x40, offset: gpio.line * 4 }),
-				Err(_)      => Err(std::io::Error::from(std::io::ErrorKind::InvalidData))?,
+				Err(_)      => Err(anyhow),
 			}
 		}
 	}
@@ -132,14 +140,16 @@ struct Value {
 }
 
 impl Value {
-	pub fn mmap (address: &Address) -> Result<Self, error::MmapValue> {
+	pub fn mmap (address: &Address) -> Result<Self> {
 		assert!(address.offset <= 28); // Not yet supported.
 
 		use nix::unistd::{sysconf, SysconfVar};
 		use nix::sys::mman::{mmap, ProtFlags, MapFlags};
 		use std::os::unix::io::AsRawFd;
 
-		let handle      = std::fs::OpenOptions::new().read(true).write(true).open("/dev/mem")?;
+		let handle = std::fs::OpenOptions::new().read(true).write(true).open("/dev/mem")
+		             .map_err(|error| anyhow!("can't open /dev/mem: {error}"))?;
+
 		let prot_flags  = ProtFlags::PROT_READ | ProtFlags::PROT_WRITE;
 		let page_size   = sysconf(SysconfVar::PAGE_SIZE)?.unwrap_or(4096) as usize;
 		let length      = std::num::NonZeroUsize::new(page_size).unwrap();
@@ -147,7 +157,10 @@ impl Value {
 		let page_offset = address.base & (page_size - 1);
 		let offset      = address.offset;
 
-		let address = unsafe { mmap(None, length, prot_flags, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)? };
+		let address = unsafe {
+			mmap(None, length, prot_flags, MapFlags::MAP_SHARED, handle.as_raw_fd(), page_base)
+			.map_err(|error| anyhow!("can't mmap page {page_base:0x}: {error}"))?
+		};
 
 		log::debug!("mmaped address = {address:?}");
 
@@ -159,22 +172,22 @@ impl Value {
 		})
 	}
 
-	pub fn get_as_ns (&self) -> Result<f32, Error> {
+	pub fn get_as_ns (&self) -> Result<f32> {
 		match self.get()? {
 			0          => Ok(0.0),
 			1          => Ok(0.3),
 			x @ 2..=12 => Ok(0.25 * x as f32),
 			13..=16    => Ok(3.25),
-			_          => Err(Error::InvalidClockDelay)
+			x          => bail!("invalid RGMII clock/data delay: {x:0x}")
 		}
 	}
 
-	pub fn get (&self) -> Result<u32, Error> {
+	pub fn get (&self) -> Result<u32> {
 		let value = unsafe { *self.address };
 		Ok((value >> self.offset) & 0xF)
 	}
 
-	pub fn set (&mut self, clock_delay: f32) -> Result<(), Error> {
+	pub fn set (&mut self, clock_delay: f32) -> Result<()> {
 		let bits  = convert_to_bits(clock_delay)?;
 		let value = unsafe { *self.address };
 		let value = (value & !(0xF << self.offset)) | (bits << self.offset);
@@ -191,7 +204,7 @@ impl Drop for Value {
 	}
 }
 
-pub(crate) fn convert_to_bits(ns: f32) -> Result<u32, Error> {
+pub(crate) fn convert_to_bits(ns: f32) -> Result<u32> {
 	// floating point literals not allowed anymore in patterns:
 	// https://github.com/rust-lang/rust/issues/41620b
 	if ns == 0.3 {
@@ -202,7 +215,7 @@ pub(crate) fn convert_to_bits(ns: f32) -> Result<u32, Error> {
                && ns % 0.25 == 0.0 {
 		Ok((ns * 4.0) as u32)
 	} else {
-		Err(Error::InvalidClockDelay)
+		bail!("invalid RGMII clock/data delay: {ns} (in nanoseconds)")
 	}
 }
 
@@ -234,14 +247,14 @@ lazy_static! {
 	};
 }
 
-pub(crate) fn parser (value: &str) -> Result<f32, String> {
+pub(crate) fn parser (value: &str) -> Result<f32> {
 	match value.parse::<f32>() {
-		Err(error) => Err(format!("not a floating point value ({error})")),
+		Err(error) => bail!("not a floating point value ({error})"),
 		Ok(value)  => {
 			if VALID_VALUES.contains(&value) {
 				Ok(value)
 			} else {
-				Err(format!("must be one of {:?}", *VALID_VALUES))
+				bail!("must be one of {:?}", *VALID_VALUES)
 			}
 		}
 	}

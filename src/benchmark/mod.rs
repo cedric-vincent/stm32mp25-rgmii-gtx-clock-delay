@@ -30,15 +30,15 @@
 
 mod ethtool;
 
-use crate::error::Error;
 use crate::clock_delay;
 use crate::device_tree;
 
 use byte_unit::Byte;
 use std::time::{Instant, Duration};
 use std::ops::Range;
+use anyhow::Result;
 
-pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<()> {
 	let reversed_valid_values = clock_delay::VALID_VALUES.iter().cloned().rev().collect::<Vec<_>>();
 
 	println!("Using URL {url}");
@@ -89,7 +89,7 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 	Ok(())
 }
 
-fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<Vec<f32>, Error> {
+fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<Vec<f32>> {
 	let mut results = Vec::new();
 
 	for clock_delay in delays.iter() {
@@ -106,7 +106,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 		let start = get_info(device)?;
 
 		let status = download(url, size_threshold, time_threshold);
-		if let Err(Error::Download(error)) = &status {
+		if let Err(error) = &status {
 			if error.is_operation_timedout() {
 				println!("{error}");
 				results.push(f32::NAN);
@@ -132,7 +132,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 	Ok(results)
 }
 
-fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), Error> {
+fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), curl::Error> {
 	use curl::easy as curl;
 
 	let mut handle = curl::Easy::new();
@@ -162,7 +162,7 @@ fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), 
 	Ok(())
 }
 
-fn get_info(device: &str) -> Result<Info, Error> {
+fn get_info(device: &str) -> Result<Info> {
 	// TODO: handle all these .unwrap()
 	let nic_stats = ethtool::get_nic_stats(device).unwrap();
 

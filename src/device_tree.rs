@@ -32,15 +32,17 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 
 use crate::clock_delay::Gpio;
-use crate::error;
+use anyhow::Result;
 
-pub(crate) fn get_name (device: &str) -> Result<String, error::DTGetName> {
+pub(crate) fn get_name (device: &str) -> Result<String> {
 	use std::io::BufRead;
 
 	let path   = format!("/sys/class/net/{device}/device/uevent");
-	let handle = std::fs::File::open(&path).map_err(|error| error::DTGetName::OpenFailed(path.clone(), error))?;
+	let handle = std::fs::File::open(&path)
+	             .map_err(|error| anyhow!("can't open {path}: {error}"))?;
 
 	let reader = std::io::BufReader::new(handle);
+	let error  = anyhow!("can't find OF_NAME entry in {path}");
 
 	for line in reader.lines().flatten() {
 		let mut tokens = line.split('=');
@@ -48,12 +50,12 @@ pub(crate) fn get_name (device: &str) -> Result<String, error::DTGetName> {
 		if tokens.next() == Some("OF_NAME") {
 			return match tokens.next() {
 				Some(token) => Ok(String::from(token)),
-				None        => Err(error::DTGetName::NotFound(path))?,
+				None        => Err(error),
 			}
 		}
 	}
 
-	Err(error::DTGetName::NotFound(path))
+	bail!(error)
 }
 
 pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {
