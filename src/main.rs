@@ -120,7 +120,7 @@ struct Options {
 }
 
 #[derive(Subcommand)]
-#[clap(author, version, about = "Handle STM32MP25 RGMII TX clock delay")]
+#[clap(author, version, about = "Handle STM32MP25 RGMII GTX clock delay")]
 enum Command {
 	/// Benchmark all possible RGMII GTX clock delays
 	Benchmark {
