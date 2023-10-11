@@ -29,12 +29,13 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag};
-use nix::errno::Errno;
+use anyhow::Result;
 
-pub(crate) fn get_nic_stats(device: &str) -> Result<std::collections::HashMap<String, u64>, Errno> {
+pub(crate) fn get_nic_stats(device: &str) -> Result<std::collections::HashMap<String, u64>> {
 	log::debug!("getting NIC statistics");
 
-	let handle = socket(AddressFamily::Inet, SockType::Datagram, SockFlag::empty(), None)?;
+	let handle = socket(AddressFamily::Inet, SockType::Datagram, SockFlag::empty(), None)
+	             .map_err(|error| anyhow!("can't create socket: {error}"))?;
 
 	let mut sset_info = self::sset_info {
 		cmd:       self::GSSET_INFO,
@@ -102,7 +103,7 @@ struct stats<T: ?Sized> {
 
 nix::ioctl_write_ptr_bad!(ioctl_write, libc::SIOCETHTOOL, libc::ifreq);
 
-fn send_ioctl(handle: libc::c_int, device: &str, data: *mut libc::c_void) -> Result<i32, Errno> {
+fn send_ioctl(handle: libc::c_int, device: &str, data: *mut libc::c_void) -> Result<i32> {
 	let ifr = libc::ifreq {
 		ifr_name: convert_to_ifr_name(device)?,
 		ifr_ifru: libc::__c_anonymous_ifr_ifru {
@@ -110,12 +111,15 @@ fn send_ioctl(handle: libc::c_int, device: &str, data: *mut libc::c_void) -> Res
 		},
 	};
 
-	unsafe { self::ioctl_write(handle, std::ptr::addr_of!(ifr)) }
+	unsafe {
+		self::ioctl_write(handle, std::ptr::addr_of!(ifr))
+		.map_err(|error| anyhow!("can't perform ioctl write: {error}"))
+	}
 }
 
-fn convert_to_ifr_name (name: &str) -> Result<[libc::c_char; 16], Errno> {
+fn convert_to_ifr_name (name: &str) -> Result<[libc::c_char; 16]> {
 	if name.len() >= 16 {
-		return Err(Errno::EINVAL)
+		bail!("IFR name \"{name}\" is too long, it should be <= 16 characters");
 	}
 
 	let mut result = [0; 16];

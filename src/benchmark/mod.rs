@@ -163,12 +163,14 @@ fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), 
 }
 
 fn get_info(device: &str) -> Result<Info> {
-	// TODO: handle all these .unwrap()
-	let nic_stats = ethtool::get_nic_stats(device).unwrap();
+	let nic_stats = ethtool::get_nic_stats(device)?;
+
+	let get = |key| nic_stats.get(key)
+	                .ok_or(anyhow!("can't find NIC statistic named \"{key}\" for device {device}"));
 
 	Ok(Info {
-		mmc_rx_crc_error: *nic_stats.get("mmc_rx_crc_error").unwrap(),
-		rx_pkt_n:         *nic_stats.get("rx_pkt_n").unwrap(),
+		mmc_rx_crc_error: *get("mmc_rx_crc_error")?,
+		rx_pkt_n:         *get("rx_pkt_n")?,
 		instant:          Instant::now(),
 	})
 }
