@@ -54,7 +54,7 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio> {
 	use std::io::BufRead;
 
 	let path    = "/sys/kernel/debug/pinctrl/";
-	let entries = std::fs::read_dir("/sys/kernel/debug/pinctrl/")
+	let entries = std::fs::read_dir(path)
 	              .map_err(|error| anyhow!("can't read directory {path}: {error}"))?;
 
 	let message = "can't find the GPIO connected to the RGMII GTX clock";
@@ -70,7 +70,13 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio> {
 
 		let mut tokens = file_name.split('@');
 
-		if tokens.next() != Some("soc:pinctrl") {
+		let prefix_is_compatible = match tokens.next() {
+			Some("soc:pinctrl") => true,
+			Some("soc")         => tokens.next() == Some("0:pinctrl"),
+			_                   => false,
+		};
+
+		if ! prefix_is_compatible {
 			continue;
 		}
 
