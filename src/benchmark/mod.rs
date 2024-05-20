@@ -38,16 +38,16 @@ use std::time::{Instant, Duration};
 use std::ops::Range;
 use anyhow::Result;
 
-pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_threshold: u64) -> Result<()> {
+pub(crate) fn perform(device: &str, url: &str, speed_low_limit: Byte, timeout: u64) -> Result<()> {
 	let reversed_valid_values = clock_delay::VALID_VALUES.iter().cloned().rev().collect::<Vec<_>>();
 
 	println!("Using URL {url}");
 
 	println!("Pass 1/2");
-	let results1 = perform_single_pass(device, url, size_threshold, time_threshold, &clock_delay::VALID_VALUES)?;
+	let results1 = perform_single_pass(device, url, speed_low_limit, timeout, &clock_delay::VALID_VALUES)?;
 
 	println!("Pass 2/2");
-	let results2 = perform_single_pass(device, url, size_threshold, time_threshold, &reversed_valid_values)?;
+	let results2 = perform_single_pass(device, url, speed_low_limit, timeout, &reversed_valid_values)?;
 
 	let results = std::iter::zip(results1, results2.iter().rev()).map(|(a, b)| a + b).collect::<Vec<_>>();
 
@@ -89,7 +89,7 @@ pub(crate) fn perform(device: &str, url: &str, size_threshold: Byte, time_thresh
 	Ok(())
 }
 
-fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_threshold: u64, delays: &[f32]) -> Result<Vec<f32>> {
+fn perform_single_pass(device: &str, url: &str, speed_low_limit: Byte, timeout: u64, delays: &[f32]) -> Result<Vec<f32>> {
 	let mut results = Vec::new();
 
 	for clock_delay in delays.iter() {
@@ -105,7 +105,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 
 		let start = get_info(device)?;
 
-		let status = download(url, size_threshold, time_threshold);
+		let status = download(url, speed_low_limit, timeout);
 		if let Err(error) = &status {
 			if error.is_operation_timedout() {
 				println!("{error}");
@@ -132,7 +132,7 @@ fn perform_single_pass(device: &str, url: &str, size_threshold: Byte, time_thres
 	Ok(results)
 }
 
-fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), curl::Error> {
+fn download(url: &str, speed_low_limit: Byte, timeout: u64) -> Result<(), curl::Error> {
 	use curl::easy as curl;
 
 	let mut handle = curl::Easy::new();
@@ -140,12 +140,12 @@ fn download(url: &str, size_threshold: Byte, time_threshold: u64) -> Result<(), 
 	handle.url(url)?;
 	handle.fail_on_error(true)?;
 
-	// Abort if transfer speed is < size_threshold bytes / time_threshold seconds.
-	let time_threshold = Duration::from_secs(time_threshold);
+	// Abort if transfer speed is < speed_low_limit/second during timeout seconds.
+	let timeout = Duration::from_secs(timeout);
 
-	handle.low_speed_limit(size_threshold.get_bytes() as u32)?;
-	handle.low_speed_time(time_threshold)?;
-	handle.connect_timeout(time_threshold)?;
+	handle.low_speed_limit(speed_low_limit.get_bytes() as u32)?;
+	handle.low_speed_time(timeout)?;
+	handle.connect_timeout(timeout)?;
 
 	let curl_result = {
 		let mut transfer = handle.transfer();
