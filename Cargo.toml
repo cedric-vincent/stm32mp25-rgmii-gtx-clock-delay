@@ -1,6 +1,6 @@
 [package]
 name = "stm32mp25-rgmii-gtx-clock-delay"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,7 +8,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 byte-unit = "4.0.19"
-clap = { version = "4.3.11", features = ["derive"] }
+clap = { version = "=4.3.24", features = ["derive"] }
+clap_lex = "=0.5.0"
 curl = "0.4.44"
 lazy_static = "1.4.0"
 libc = "0.2.147"
