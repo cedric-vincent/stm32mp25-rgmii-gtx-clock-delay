@@ -64,6 +64,7 @@ pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {
 	let base = "/sys/firmware/devicetree/base";
 
 	find_paths(&format!("{base}/soc/{}", gpio.pinctrl), gpio, &mut paths);
+	find_paths(&format!("{base}/soc@0/{}", gpio.pinctrl), gpio, &mut paths);
 
 	paths.iter().map(|path| format!("/{}", path.strip_prefix(base).unwrap().display())).collect()
 }

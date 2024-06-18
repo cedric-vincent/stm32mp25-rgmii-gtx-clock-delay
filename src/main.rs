@@ -132,7 +132,7 @@ enum Command {
 		#[clap(short, long, default_value = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz")]
 		url: String,
 
-		/// Skip if transfer rate is below SPEED_LOW_LIMIT bytes/second during more than TIMEOUT seconds
+		/// Skip if transfer rate is below SPEED_LOW_LIMIT/second during more than TIMEOUT seconds
 		#[clap(short, long, default_value = "100 kiB", value_parser = speed_low_limit_parser)]
 		speed_low_limit: Byte,
 
