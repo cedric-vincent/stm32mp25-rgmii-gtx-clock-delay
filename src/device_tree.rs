@@ -44,7 +44,7 @@ pub(crate) fn get_name (device: &str) -> Result<String> {
 	let reader = std::io::BufReader::new(handle);
 	let error  = anyhow!("can't find OF_NAME entry in {path}");
 
-	for line in reader.lines().flatten() {
+	for line in reader.lines().map_while(Result::ok) {
 		let mut tokens = line.split('=');
 
 		if tokens.next() == Some("OF_NAME") {
@@ -63,8 +63,8 @@ pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {
 
 	let base = "/sys/firmware/devicetree/base";
 
-	find_paths(&format!("{base}/soc/{}", gpio.pinctrl), gpio, &mut paths);
-	find_paths(&format!("{base}/soc@0/{}", gpio.pinctrl), gpio, &mut paths);
+	find_paths(format!("{base}/soc/{}", gpio.pinctrl), gpio, &mut paths);
+	find_paths(format!("{base}/soc@0/{}", gpio.pinctrl), gpio, &mut paths);
 
 	paths.iter().map(|path| format!("/{}", path.strip_prefix(base).unwrap().display())).collect()
 }
@@ -95,7 +95,7 @@ fn find_paths<P: AsRef<Path>>(current_dir: P, gpio: &Gpio, result: &mut Vec<Path
 		};
 
 		if file_type.is_dir() {
-			find_paths(&entry.path(), gpio, result);
+			find_paths(entry.path(), gpio, result);
 		} else if file_type.is_file() {
 			if entry.file_name() != "pinmux" {
 				continue;

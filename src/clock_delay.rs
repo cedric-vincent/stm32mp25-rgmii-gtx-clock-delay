@@ -89,7 +89,7 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio> {
 		let reader = std::io::BufReader::new(handle);
 		let needle = format!("{}_RGMII_GTX_CLK", dt_name.to_uppercase());
 
-		for line in reader.lines().flatten() {
+		for line in reader.lines().map_while(Result::ok) {
 			if ! line.contains(&needle) {
 				continue;
 			}
