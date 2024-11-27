@@ -1,7 +1,7 @@
 [package]
 description = "A tool to calibrate RGMII GTX clock delay on STM32MP2"
 name = "stm32mp25-rgmii-gtx-clock-delay"
-version = "0.6.2"
+version = "0.6.3"
 edition = "2021"
 license = "BSD-3-Clause"
 
