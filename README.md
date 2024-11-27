@@ -1,9 +1,6 @@
-=================================
- STM32MP25 RGMII GTX clock delay
-=================================
+# STM32MP25 RGMII GTX clock delay
 
-Introdution
-===========
+## Introdution
 
 RGMII requires a skew between the clock and data signals, as they are
 generated simultaneously by the transmitting source. This skew is
@@ -13,32 +10,32 @@ possible to add an extra delay on the GTX clock signal from the
 STM32MP2 itself. A tool named 'stm32mp25-rgmii-gtx-clock-delay' was
 especially developed for that purpose.
 
-How to install this tool
-========================
+## How to install this tool
 
 As of writing this, the tool is not available by default on any
 OpenSTLinux images. Therefore, it must be manually installed into the
 target root file-system. This can be done directly from the target if
-it has an internet connection::
-
-   root@stm32mp25:~# wget TBD --output /usr/bin/stm32mp25-rgmii-gtx-clock-delay
+it has an internet connection:
+```
+   root@stm32mp25:~# wget https://github.com/STMicroelectronics/wiki-stm32mp-addons/raw/refs/heads/main/stm32mp25-rgmii-gtx-clock-delay/bin/stm32mp25-rgmii-gtx-clock-delay --output /usr/bin/stm32mp25-rgmii-gtx-clock-delay
+```
 
 Another way is to transfer the tool from a PC to the target
 file-system.  For instance, assuming users can access the target root
-file system through /dev/sdXY on their PC::
+file system through /dev/sdXY on their PC:
+```
+   root@pc$ mount /dev/sdXY /mnt
+   root@pc$ wget https://github.com/STMicroelectronics/wiki-stm32mp-addons/raw/refs/heads/main/stm32mp25-rgmii-gtx-clock-delay/bin/stm32mp25-rgmii-gtx-clock-delay --output /mnt/usr/bin/stm32mp25-rgmii-gtx-clock-delay
+   root@pc$ chmod +x /mnt/usr/bin/stm32mp25-rgmii-gtx-clock-delay
+   root@pc$ umount /mnt
+```
 
-   PC $> mount /dev/sdXY /mnt
-   PC $> wget TBD --output /mnt/usr/bin/stm32mp25-rgmii-gtx-clock-delay
-   PC $> chmod +x /mnt/usr/bin/stm32mp25-rgmii-gtx-clock-delay
-   PC $> umount /mnt
-
-How to use this tool
-====================
+## How to use this tool
 
 The tool 'stm32mp25-rgmii-gtx-clock-delay' can be used to
 automatically find the best clock delay and to get or set a clock
-delay manually::
-
+delay manually:
+```
   root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay
   Handle STM32MP25 RGMII GTX clock delay
   
@@ -55,12 +52,12 @@ delay manually::
     -v, --verbose...  Increase verbosity level (once = debug, twice = trace)
     -h, --help        Print help
     -V, --version     Print version
+```
 
-Benchmark all possible values
------------------------------
+### Benchmark all possible values
 
-To automatically find the best clock delay, use the 'benchmark' subcommand::
-
+To automatically find the best clock delay, use the 'benchmark' subcommand:
+```
   root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay help benchmark
   Benchmark all possible RGMII GTX clock delays
   
@@ -77,6 +74,7 @@ To automatically find the best clock delay, use the 'benchmark' subcommand::
             Timemout for SPEED_LOW_LIMIT and for the connection phase [default: 5]
     -h, --help
             Print help
+```
 
 The only required option is -d/--device. If the running system does
 not have access to the internet, specifically https://cdn.kernel.org,
@@ -86,8 +84,8 @@ than 100 MiB. Other options have default values that should be
 suitable for all cases, and thus, they can be ignored.
 
 Here's a typical example. This can take a couple of minutes, depending
-on the network speed::
-
+on the network speed:
+```
   root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay benchmark --device eth1
   Using URL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz
   Pass 1/2
@@ -125,27 +123,28 @@ on the network speed::
           /soc/pinctrl@44240000/eth2-rgmii-0/pins2
           /soc/pinctrl@44240000/eth2-rgmii-test-1/pins2
           /soc/pinctrl@44240000/eth2-rgmii-test-0/pins1
+```
 
 The most important information is delivered at the end of the
-benchmark.  In the previous example, this is this part::
-
+benchmark.  In the previous example, this is this part:
+```
   Best RGMII GTX clock delay is 0.75 ns
   To permanently use this RGMII GTX clock delay, add "st,io-delay = <0x3>;" into following device-tree node(s):
           /soc/pinctrl@44240000/eth2-rgmii-0/pins2
           /soc/pinctrl@44240000/eth2-rgmii-test-1/pins2
           /soc/pinctrl@44240000/eth2-rgmii-test-0/pins1
+```
 
 It shows the best RGMII GTX clock delay, which is 0.75 nanoseconds in
 this example, and provides instructions on how to modify the
 device-tree to use this value permanently.
 
 
-Set or get current value
-------------------------
+### Set or get current value
 
 This tool can also be used to manually get and set the current RGMII
-GTX clock delay::
-
+GTX clock delay:
+```
    root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay get --device eth1
    device named "eth1" is known as "eth2" in device-tree
    ↳ its RGMII GTX clock is connected to GPIO F7 (pinctrl@44240000)
@@ -157,12 +156,11 @@ GTX clock delay::
    ↳ its RGMII GTX clock is connected to GPIO F7 (pinctrl@44240000)
      ↳ its delay can be accessed at address 0x44290040 (bits 28-32) in /dev/mem
        ↳ its value is 0x3 (0.75 nanoseconds)
+```
 
-Potential issues & solutions
-============================
+## Potential issues & solutions
 
-"No reliable RGMII GTX clock delay found"
------------------------------------------
+### "No reliable RGMII GTX clock delay found"
 
 If the tool reports "No reliable RGMII GTX clock delay found", it
 indicates that the signal may be too degraded to sustain
@@ -170,16 +168,14 @@ megabytes of download.  To avoid this situation, you can specify
 a smaller payload using the --url option. However, it may be more
 suitable to redesign the PCB traces causing the issue.
 
-"Couldn't resolve host name"
-----------------------------
+### "Couldn't resolve host name"
 
 If you are seeing the error message "Couldn't resolve host name", it
 could be due to issues with your network settings.  Please check your
 network settings (/etc/resolv.conf, https_proxy env. variable, ...)
 and make sure that they are configured correctly.
 
-"SSL certificate problem"
--------------------------
+### "SSL certificate problem"
 
 If you encounter the error message "SSL certificate problem", it
 probably means that some CA certificates are missing on your
