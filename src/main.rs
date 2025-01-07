@@ -28,6 +28,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![doc = include_str!("../README.md")]
+
 mod clock_delay;
 mod benchmark;
 mod device_tree;
@@ -43,6 +45,7 @@ extern crate anyhow;
 
 use anyhow::{Context, Result};
 
+/// Entry point, set verbosity and action based on the command-line arguments.
 fn main () -> Result<()> {
 	let options = Options::parse();
 
@@ -51,10 +54,6 @@ fn main () -> Result<()> {
 	        .color(stderrlog::ColorChoice::Never)
 	        .init();
 
-	main2(options)
-}
-
-fn main2 (options: Options) -> Result<()> {
 	match options.command {
 		Command::Benchmark {device, url, speed_low_limit, timeout } => {
 			benchmark::perform(&device, &url, speed_low_limit, timeout)
@@ -109,6 +108,7 @@ fn main2 (options: Options) -> Result<()> {
 	Ok(())
 }
 
+/// Global options.
 #[derive(Parser)]
 struct Options {
 	/// Increase verbosity level (once = debug, twice = trace)
@@ -116,9 +116,11 @@ struct Options {
 	verbose: u8,
 
 	#[clap(subcommand)]
+	/// Requested command
 	command: Command,
 }
 
+/// All available commands
 #[derive(Subcommand)]
 #[clap(author, version, about = "Handle STM32MP25 RGMII GTX clock delay")]
 enum Command {
@@ -163,6 +165,7 @@ enum Command {
 	License { }
 }
 
+/// Parses a `&str` into a `Byte` for the `--speed-low-limit` option.
 fn speed_low_limit_parser (value: &str) -> Result<Byte> {
 	Byte::from_str(value).map_err(|error| anyhow!("not a valid size in bytes ({error})"))
 }

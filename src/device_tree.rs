@@ -34,6 +34,12 @@ use std::io::Read;
 use crate::clock_delay::Gpio;
 use anyhow::Result;
 
+/// Gets the device-tree name of the specified `device`.
+///
+/// For example, a network device can be named "eth0" by the running
+/// system, but its device-tree name might be "eth2".
+///
+/// This function actually parses "/sys/class/net/`device`/device/uevent".
 pub(crate) fn get_name (device: &str) -> Result<String> {
 	use std::io::BufRead;
 
@@ -58,6 +64,9 @@ pub(crate) fn get_name (device: &str) -> Result<String> {
 	bail!(error)
 }
 
+/// Finds all device-tree nodes for the specified `gpio`.
+///
+/// This function actually parses "/sys/firmware/devicetree/base".
 pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {
 	let mut paths = Vec::new();
 
@@ -69,6 +78,9 @@ pub(crate) fn find_nodes(gpio: &Gpio) -> Vec<String> {
 	paths.iter().map(|path| format!("/{}", path.strip_prefix(base).unwrap().display())).collect()
 }
 
+/// Finds all paths recursely from `current_dir` that match the specified `gpio`.
+///
+/// Note: It is expected that `current_dir` belongs to "/sys/firmware/devicetree/base".
 fn find_paths<P: AsRef<Path>>(current_dir: P, gpio: &Gpio, result: &mut Vec<PathBuf>) {
 	let current_dir  = current_dir.as_ref();
 	let current_dir_ = format!("{}", current_dir.display());
@@ -130,10 +142,16 @@ fn find_paths<P: AsRef<Path>>(current_dir: P, gpio: &Gpio, result: &mut Vec<Path
 	}
 }
 
+/// Pin multiplexer information.
 #[derive(Debug)]
 struct PinMux {
+	/// Bank to which the pin belongs, ex. GPIOA.
 	bank:  u8,
+
+	/// Line of the pin within the bank.
 	line:  u8,
+
+	/// Mode of the pin, currently unused.
 	_mode: u8,
 }
 

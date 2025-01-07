@@ -16,14 +16,14 @@ As of writing this, the tool is not available by default on any
 OpenSTLinux images. Therefore, it must be manually installed into the
 target root file-system. This can be done directly from the target if
 it has an internet connection:
-```
+```text
    root@stm32mp25:~# wget https://github.com/STMicroelectronics/wiki-stm32mp-addons/raw/refs/heads/main/stm32mp25-rgmii-gtx-clock-delay/bin/stm32mp25-rgmii-gtx-clock-delay --output /usr/bin/stm32mp25-rgmii-gtx-clock-delay
 ```
 
 Another way is to transfer the tool from a PC to the target
 file-system.  For instance, assuming users can access the target root
 file system through /dev/sdXY on their PC:
-```
+```text
    root@pc$ mount /dev/sdXY /mnt
    root@pc$ wget https://github.com/STMicroelectronics/wiki-stm32mp-addons/raw/refs/heads/main/stm32mp25-rgmii-gtx-clock-delay/bin/stm32mp25-rgmii-gtx-clock-delay --output /mnt/usr/bin/stm32mp25-rgmii-gtx-clock-delay
    root@pc$ chmod +x /mnt/usr/bin/stm32mp25-rgmii-gtx-clock-delay
@@ -35,7 +35,7 @@ file system through /dev/sdXY on their PC:
 The tool 'stm32mp25-rgmii-gtx-clock-delay' can be used to
 automatically find the best clock delay and to get or set a clock
 delay manually:
-```
+```text
   root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay
   Handle STM32MP25 RGMII GTX clock delay
   
@@ -57,7 +57,7 @@ delay manually:
 ### Benchmark all possible values
 
 To automatically find the best clock delay, use the 'benchmark' subcommand:
-```
+```text
   root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay help benchmark
   Benchmark all possible RGMII GTX clock delays
   
@@ -77,7 +77,7 @@ To automatically find the best clock delay, use the 'benchmark' subcommand:
 ```
 
 The only required option is -d/--device. If the running system does
-not have access to the internet, specifically https://cdn.kernel.org,
+not have access to the internet, specifically <https://cdn.kernel.org>,
 then another URL must be specified using the -u/--url option. In that
 case, it is strongly recommended to point to a payload which is more
 than 100 MiB. Other options have default values that should be
@@ -85,7 +85,7 @@ suitable for all cases, and thus, they can be ignored.
 
 Here's a typical example. This can take a couple of minutes, depending
 on the network speed:
-```
+```text
   root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay benchmark --device eth1
   Using URL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.4.3.tar.xz
   Pass 1/2
@@ -127,7 +127,7 @@ on the network speed:
 
 The most important information is delivered at the end of the
 benchmark.  In the previous example, this is this part:
-```
+```text
   Best RGMII GTX clock delay is 0.75 ns
   To permanently use this RGMII GTX clock delay, add "st,io-delay = <0x3>;" into following device-tree node(s):
           /soc/pinctrl@44240000/eth2-rgmii-0/pins2
@@ -144,7 +144,7 @@ device-tree to use this value permanently.
 
 This tool can also be used to manually get and set the current RGMII
 GTX clock delay:
-```
+```text
    root@stm32mp25:~# stm32mp25-rgmii-gtx-clock-delay get --device eth1
    device named "eth1" is known as "eth2" in device-tree
    ↳ its RGMII GTX clock is connected to GPIO F7 (pinctrl@44240000)

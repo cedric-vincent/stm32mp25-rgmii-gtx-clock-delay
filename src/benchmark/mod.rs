@@ -38,6 +38,10 @@ use std::time::{Instant, Duration};
 use std::ops::Range;
 use anyhow::Result;
 
+/// Benchmarks the `device` using the specified `url`.
+///
+/// This function returns an error if either the specified
+/// `speed_low_limit` or `timeout` is reached.
 pub(crate) fn perform(device: &str, url: &str, speed_low_limit: Byte, timeout: u64) -> Result<()> {
 	let reversed_valid_values = clock_delay::VALID_VALUES.iter().cloned().rev().collect::<Vec<_>>();
 
@@ -89,6 +93,10 @@ pub(crate) fn perform(device: &str, url: &str, speed_low_limit: Byte, timeout: u
 	Ok(())
 }
 
+/// Performs a single benchmark pass for the `device` using the specified `url`.
+///
+/// This function returns an error if either the specified
+/// `speed_low_limit` or `timeout` is reached.
 fn perform_single_pass(device: &str, url: &str, speed_low_limit: Byte, timeout: u64, delays: &[f32]) -> Result<Vec<f32>> {
 	let mut results = Vec::new();
 
@@ -132,6 +140,10 @@ fn perform_single_pass(device: &str, url: &str, speed_low_limit: Byte, timeout: 
 	Ok(results)
 }
 
+/// Downloads the content from `url`.
+///
+/// This function returns an error if either the specified
+/// `speed_low_limit` or `timeout` is reached.
 fn download(url: &str, speed_low_limit: Byte, timeout: u64) -> Result<(), curl::Error> {
 	use curl::easy as curl;
 
@@ -162,6 +174,7 @@ fn download(url: &str, speed_low_limit: Byte, timeout: u64) -> Result<(), curl::
 	Ok(())
 }
 
+/// Gets current number of CRC errors and received packets.
 fn get_info(device: &str) -> Result<Info> {
 	let nic_stats = ethtool::get_nic_stats(device)?;
 
@@ -175,12 +188,19 @@ fn get_info(device: &str) -> Result<Info> {
 	})
 }
 
+/// Snapshot of the number of CRC errors and received packets.
 struct Info {
+	/// Number of CRC errors encountered in received packets.
 	mmc_rx_crc_error: u64,
+
+	/// Number of received packets.
 	rx_pkt_n:         u64,
+
+	/// Instant when previous values were snapshotted.
 	instant:          Instant,
 }
 
+/// Returns a list of ranges representing consecutive valid (ie. non-NaN) values in specified `array`.
 fn find_strikes (array: &[f32]) -> Vec<Range<usize>> {
 	let mut strikes = Vec::new();
 	let mut start   = None;

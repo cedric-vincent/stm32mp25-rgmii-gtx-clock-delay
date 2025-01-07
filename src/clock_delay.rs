@@ -30,6 +30,12 @@
 
 use anyhow::{Context, Result};
 
+/// Accesses and optionally modifies the clock delay of a device.
+///
+/// # Arguments
+///
+/// * `clock_delay` - Optional clock delay value to set.
+/// * `verbose` - Control verbose output.
 pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> Result<()> {
 	let dt_name = crate::device_tree::get_name(device)?;
 	let gpio    = get_gpio(&dt_name)?;
@@ -50,6 +56,7 @@ pub(crate) fn access (device: &str, clock_delay: Option<f32>, verbose: bool) -> 
 	Ok(())
 }
 
+/// Gets the `gpio` of the specified device-tree node.
 pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio> {
 	use std::io::BufRead;
 
@@ -119,6 +126,7 @@ pub(crate) fn get_gpio (dt_name: &str) -> Result<Gpio> {
 	bail!(message)
 }
 
+/// Gets the memory mapped address of the specified `gpio`.
 fn get_address (gpio: &Gpio) -> Result<Address> {
 	let path = format!("/sys/firmware/devicetree/base/__symbols__/gpio{}", gpio.bank.to_lowercase());
 	let path = std::fs::read_to_string(path.clone()).map_err(|error| anyhow!("can't read {path}: {error}"))?;
@@ -137,6 +145,9 @@ fn get_address (gpio: &Gpio) -> Result<Address> {
 	}
 }
 
+/// Memory mapping of a clock delay value.
+///
+/// This structure handles alignment and unmapping requirements.
 #[derive(Debug)]
 struct Value {
 	address: *mut u32,
@@ -146,6 +157,9 @@ struct Value {
 }
 
 impl Value {
+	/// Create a memory mapping for the specified `address`.
+	///
+	/// This function handles all alignment constraints.
 	pub fn mmap (address: &Address) -> Result<Self> {
 		assert!(address.offset <= 28); // Not yet supported.
 
@@ -178,6 +192,7 @@ impl Value {
 		})
 	}
 
+	/// Get the clock delay value in nanoseconds.
 	pub fn get_as_ns (&self) -> Result<f32> {
 		match self.get()? {
 			0          => Ok(0.0),
@@ -188,11 +203,13 @@ impl Value {
 		}
 	}
 
+	/// Get the clock delay value.
 	pub fn get (&self) -> Result<u32> {
 		let value = unsafe { *self.address };
 		Ok((value >> self.offset) & 0xF)
 	}
 
+	/// Set the clock delay value.
 	pub fn set (&mut self, clock_delay: f32) -> Result<()> {
 		let bits  = convert_to_bits(clock_delay)?;
 		let value = unsafe { *self.address };
@@ -210,6 +227,7 @@ impl Drop for Value {
 	}
 }
 
+/// Converts specified clock delay from `f32` to `u32` (interpreted as bitfields).
 pub(crate) fn convert_to_bits(ns: f32) -> Result<u32> {
 	// floating point literals not allowed anymore in patterns:
 	// https://github.com/rust-lang/rust/issues/41620b
@@ -246,6 +264,7 @@ fn test_convert_bits () {
 }
 
 lazy_static! {
+	/// List of all valid clock delay values.
 	pub(crate) static ref VALID_VALUES: Vec<f32> = {
 		let mut valid_values = vec![0 as f32, 0.3];
 		valid_values.append(&mut (2..=13).map(|x| x as f32 * 0.25).collect());
@@ -253,6 +272,9 @@ lazy_static! {
 	};
 }
 
+/// Parses the specified clock delay `value` from `&str` into `f32`.
+///
+/// This function also checks that the parsed value is valid.
 pub(crate) fn parser (value: &str) -> Result<f32> {
 	match value.parse::<f32>() {
 		Err(error) => bail!("not a floating point value ({error})"),
@@ -266,16 +288,26 @@ pub(crate) fn parser (value: &str) -> Result<f32> {
 	}
 }
 
+/// GPIO information.
 #[derive(Debug)]
 pub(crate) struct Gpio {
+	/// Bank to which the pin belongs, ex. GPIOA.
 	pub bank: char,
+
+	/// Line of the pin within the bank.
 	pub line: u8,
+
+	/// Name of the pin controler.
 	pub pinctrl: String,
 }
 
+/// Memory mapped address of a GPIO.
 #[derive(Debug)]
 struct Address {
+	/// Base address of the GPIO.
 	base:   usize,
+
+	/// Offset from the base address.
 	offset: u8,
 }
 

@@ -31,6 +31,7 @@
 use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag};
 use anyhow::Result;
 
+/// Get Network Interface Card (NIC) statistics for the specified `device`.
 pub(crate) fn get_nic_stats(device: &str) -> Result<std::collections::HashMap<String, u64>> {
 	log::debug!("getting NIC statistics");
 
@@ -75,6 +76,7 @@ pub(crate) fn get_nic_stats(device: &str) -> Result<std::collections::HashMap<St
 	   .collect())
 }
 
+/// Statistics set information, see ethtool or Linux sources for details.
 #[repr(C)]
 #[derive(Debug)]
 struct sset_info<T: ?Sized> {
@@ -84,6 +86,7 @@ struct sset_info<T: ?Sized> {
 	pub data:      T,
 }
 
+/// String set, see ethtool or Linux sources for details.
 #[repr(C)]
 #[derive(Debug)]
 struct gstrings<T: ?Sized> {
@@ -93,6 +96,7 @@ struct gstrings<T: ?Sized> {
 	pub data:       T,
 }
 
+/// Statistics information, see ethtool or Linux sources for details.
 #[repr(C)]
 #[derive(Debug)]
 struct stats<T: ?Sized> {
@@ -103,6 +107,7 @@ struct stats<T: ?Sized> {
 
 nix::ioctl_write_ptr_bad!(ioctl_write, libc::SIOCETHTOOL, libc::ifreq);
 
+/// Sends `data` to the specified `device` driver through its ioctl interface.
 fn send_ioctl(handle: libc::c_int, device: &str, data: *mut libc::c_void) -> Result<i32> {
 	let ifr = libc::ifreq {
 		ifr_name: convert_to_ifr_name(device)?,
@@ -117,6 +122,7 @@ fn send_ioctl(handle: libc::c_int, device: &str, data: *mut libc::c_void) -> Res
 	}
 }
 
+/// Converts the interface `name` from a `&str` to a `[libc::c_char; 16]`.
 fn convert_to_ifr_name (name: &str) -> Result<[libc::c_char; 16]> {
 	if name.len() >= 16 {
 		bail!("IFR name \"{name}\" is too long, it should be <= 16 characters");
@@ -131,8 +137,17 @@ fn convert_to_ifr_name (name: &str) -> Result<[libc::c_char; 16]> {
 	Ok(result)
 }
 
+/// Command to get statistics set information.
 const GSSET_INFO:  u32   = 0x00000037;
+
+/// Statistics set identifier.
 const SS_STATS:    u32   = 1;
+
+/// Maximum length of strings.
 const GSTRING_LEN: usize = 32;
+
+/// Command to get strings.
 const GSTRINGS:    u32   = 0x0000001b;
+
+/// Command to get statistics.
 const GSTATS:      u32   = 0x0000001d;
